@@ -3,222 +3,218 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Owrt-MusicBox</title>
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <meta name="theme-color" content="#0a0a14">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+    <title>OwrtBox</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="apple-touch-icon" href="/static/img/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/all.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=2">
-    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+    <link rel="shortcut icon" href="/static/img/favicon.ico">
 </head>
 <body>
-<div class="bg-grid"></div>
-<div class="bg-glow"></div>
-
 <audio id="browser-audio" preload="auto"></audio>
 
-<div class="player">
-    <!-- Header -->
-    <div class="header">
+<div class="app">
+    <!-- Top Bar -->
+    <div class="topbar">
         <span class="brand" onclick="toggleTheme()">OwrtBox</span>
-        <div class="header-right">
+        <div class="topbar-right">
+            <div class="mode-toggle" onclick="togglePlayMode()">
+                <span id="mode-device" class="active"><i class="fa-solid fa-server"></i></span>
+                <span id="mode-browser"><i class="fa-solid fa-desktop"></i></span>
+            </div>
+            <button class="btn-icon" onclick="tg('lym')" id="btn-lyrics"><i class="fa-solid fa-microphone-lines"></i></button>
             <button class="btn-icon" onclick="tg('om')" id="btn-output"><i class="fa-solid fa-headphones"></i></button>
-            <button class="btn-icon" onclick="toggleQuickMenu()" id="btn-menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
         </div>
-        <div id="quick-menu" class="quick-menu">
-            <div class="quick-grid">
-                <button class="btn-icon" id="btn-xf" onclick="toggleCrossfeed()" style="position:relative;"><i class="fa-solid fa-globe"></i><span id="xf-dot" class="dot" style="background:#ff00ff;display:none;"></span></button>
-                <button class="btn-icon" id="btn-bp" onclick="toggleBitPerfect()" style="position:relative;"><i class="fa-solid fa-microchip"></i><span id="bp-dot" class="dot" style="background:var(--pink);display:none;"></span></button>
-                <button class="btn-icon" id="btn-timer" onclick="tg('tm')" style="position:relative;"><i class="fa-solid fa-stopwatch"></i><span id="timer-badge" class="badge-dot" style="display:none;"></span></button>
-                <button class="btn-icon" onclick="toggleLyrics()" id="btn-lyrics"><i class="fa-solid fa-microphone-lines"></i></button>
-                <button class="btn-icon" onclick="tg('pm')"><i class="fa-solid fa-list-ul"></i></button>
+    </div>
+
+    <!-- Now Playing Page -->
+    <div class="page active" id="page-now">
+        <div class="now-playing">
+            <div class="art" id="artBox">
+                <img id="cover-img" src="/static/img/default.png" alt="" onerror="this.src='/static/img/default.png'">
+            </div>
+            <div class="info">
+                <div class="title" id="tit">Ready</div>
+                <div class="artist" id="art">OwrtBox Player</div>
+                <div class="meta-row">
+                    <span id="genre" class="badge" style="display:none;">Genre</span>
+                    <span id="year" class="badge" style="display:none;">Year</span>
+                </div>
+                <div class="tech" id="tech-specs">AWAITING SIGNAL</div>
+            </div>
+            <div class="seek">
+                <div class="seek-row">
+                    <span class="time" id="t-cur">0:00</span>
+                    <input type="range" id="pb" min="0" max="100" value="0">
+                    <span class="time" id="t-tot">0:00</span>
+                </div>
+            </div>
+            <div class="controls">
+                <button class="ctrl small" id="btn-shuf" onclick="ctl('shuffle')"><i class="fa-solid fa-shuffle"></i></button>
+                <button class="ctrl" id="btn-prev" onclick="ctl('prev')"><i class="fa-solid fa-backward-step"></i></button>
+                <button class="ctrl play" id="btn-play" onclick="togglePlay()"><i class="fa-solid fa-play" id="pi"></i></button>
+                <button class="ctrl" id="btn-next" onclick="ctl('next')"><i class="fa-solid fa-forward-step"></i></button>
+                <button class="ctrl small" id="btn-loop" onclick="ctl('loop')"><i class="fa-solid fa-repeat"></i></button>
             </div>
         </div>
-    </div>
 
-    <!-- Album Art -->
-    <div class="art-wrap">
-        <div class="art-box" id="artBox">
-            <img id="cover-img" src="/static/img/default.png" alt="" onerror="this.src='/static/img/default.png'">
-            <div class="art-glow"></div>
-        </div>
-        <div class="info">
-            <div class="song-title" id="tit">Ready</div>
-            <div class="song-artist" id="art">Connect & Play</div>
-            <div class="song-meta">
-                <span id="genre" class="badge" style="display:none;">Genre</span>
-                <span id="year" class="badge" style="display:none;">Year</span>
+        <!-- Panel: EQ + Volume + Balance -->
+        <div class="panel" id="panel-eq">
+            <div class="panel-header" onclick="togglePanel()">
+                <span>AUDIO SETTINGS</span>
+                <span style="font-size:0.6rem;color:#666;"><i class="fa-solid fa-chevron-up"></i></span>
             </div>
-            <div class="tech" id="tech-specs">AWAITING SIGNAL</div>
+            <div class="panel-body">
+                <div class="vol-row">
+                    <i class="fa-solid fa-volume-low"></i>
+                    <input type="range" id="vol-slider" min="0" max="100" value="50">
+                    <span id="vol-val">50</span>
+                </div>
+                <div class="bal-row">
+                    <span>L</span>
+                    <input type="range" id="balanceSlider" min="-100" max="100" value="0" step="5">
+                    <span>R</span>
+                </div>
+                <div class="eq-row" id="eq-row">
+                    <div class="eq-bar-wrap" data-f="1"><div class="eq-track"><div class="eq-fill" id="eq-f1" style="height:50%;"></div></div><span class="eq-label">Sub</span></div>
+                    <div class="eq-bar-wrap" data-f="2"><div class="eq-track"><div class="eq-fill" id="eq-f2" style="height:50%;"></div></div><span class="eq-label">Low</span></div>
+                    <div class="eq-bar-wrap" data-f="3"><div class="eq-track"><div class="eq-fill" id="eq-f3" style="height:50%;"></div></div><span class="eq-label">Kick</span></div>
+                    <div class="eq-bar-wrap" data-f="4"><div class="eq-track"><div class="eq-fill" id="eq-f4" style="height:50%;"></div></div><span class="eq-label">Mid</span></div>
+                    <div class="eq-bar-wrap" data-f="5"><div class="eq-track"><div class="eq-fill" id="eq-f5" style="height:50%;"></div></div><span class="eq-label">Body</span></div>
+                    <div class="eq-bar-wrap" data-f="6"><div class="eq-track"><div class="eq-fill" id="eq-f6" style="height:50%;"></div></div><span class="eq-label">Vox</span></div>
+                    <div class="eq-bar-wrap" data-f="7"><div class="eq-track"><div class="eq-fill" id="eq-f7" style="height:50%;"></div></div><span class="eq-label">Detl</span></div>
+                    <div class="eq-bar-wrap" data-f="8"><div class="eq-track"><div class="eq-fill" id="eq-f8" style="height:50%;"></div></div><span class="eq-label">Pres</span></div>
+                    <div class="eq-bar-wrap" data-f="9"><div class="eq-track"><div class="eq-fill" id="eq-f9" style="height:50%;"></div></div><span class="eq-label">Treb</span></div>
+                    <div class="eq-bar-wrap" data-f="10"><div class="eq-track"><div class="eq-fill" id="eq-f10" style="height:50%;"></div></div><span class="eq-label">Air</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-wrap">
+            <form onsubmit="searchYt(event)" class="search-form">
+                <input id="searchInput" class="search-input" placeholder="Search YouTube..." autocomplete="off">
+                <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </form>
         </div>
     </div>
 
-    <!-- Seekbar -->
-    <div class="seek">
-        <div class="seek-row">
-            <span class="time" id="t-cur">0:00</span>
-            <input type="range" id="pb" min="0" max="100" value="0">
-            <span class="time" id="t-tot">0:00</span>
+    <!-- Search Page -->
+    <div class="page page-search" id="page-search">
+        <div class="search-form" style="margin-bottom:8px;">
+            <input id="searchInput2" class="search-input" placeholder="Search..." autocomplete="off" onkeydown="if(event.key==='Enter')searchYt(event)">
+            <button onclick="searchYt(event)" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+        </div>
+        <div id="search-results"></div>
+    </div>
+
+    <!-- Queue Page -->
+    <div class="page page-queue" id="page-queue">
+        <div class="queue-header">
+            <span>PLAYING NEXT</span>
+            <div class="queue-actions">
+                <button onclick="exportM3U()"><i class="fa-solid fa-download"></i> M3U</button>
+                <button onclick="document.getElementById('m3u-input').click()"><i class="fa-solid fa-upload"></i></button>
+                <input type="file" id="m3u-input" accept=".m3u,.m3u8,.pls" style="display:none" onchange="importM3U(event)">
+                <button onclick="clearQueue()" style="color:#ff4444;">Clear</button>
+            </div>
+        </div>
+        <div id="queue-list"></div>
+    </div>
+
+    <!-- Menu Page -->
+    <div class="page page-menu" id="page-menu">
+        <div class="menu-section">
+            <h3>Library</h3>
+            <div class="menu-item" onclick="openLibrary()"><i class="fa-solid fa-folder-music"></i><span class="label">Media Center</span><span class="sub">Files & Saved</span></div>
+            <div class="menu-item" onclick="presets()"><i class="fa-solid fa-sliders"></i><span class="label">EQ Presets</span><span class="sub" id="cur-preset-txt">Normal</span></div>
+        </div>
+        <div class="menu-section">
+            <h3>Output</h3>
+            <div class="menu-item" onclick="manualOut('jack')"><i class="fa-solid fa-headphones"></i><span class="label">Line Out (3.5mm)</span></div>
+            <div class="menu-item" onclick="manualOut('hdmi')"><i class="fa-solid fa-tv"></i><span class="label">HDMI Audio</span></div>
+            <div class="menu-item" onclick="openBt()"><i class="fa-brands fa-bluetooth-b"></i><span class="label">Bluetooth</span></div>
+        </div>
+        <div class="menu-section">
+            <h3>Tools</h3>
+            <div class="menu-item" onclick="scanLibrary()"><i class="fa-solid fa-sync"></i><span class="label">Rescan Library</span><span class="sub" id="scan-status">Ready</span></div>
+            <div class="menu-item" onclick="setTimer(15)"><i class="fa-solid fa-stopwatch"></i><span class="label">Sleep Timer</span><span class="sub">15 min</span></div>
+        </div>
+        <div class="menu-section" id="bt-section" style="display:none;">
+            <h3>Bluetooth Devices</h3>
+            <button onclick="scanBt()" style="background:var(--surface);border:none;color:var(--text-dim);padding:8px 16px;border-radius:8px;width:100%;margin-bottom:6px;cursor:pointer;">SCAN</button>
+            <div id="bt-list"></div>
+            <div id="bt-status" style="font-size:0.6rem;color:var(--primary);text-align:center;margin-top:4px;"></div>
         </div>
     </div>
 
-    <!-- Controls -->
-    <div class="controls">
-        <button class="ctrl small" id="btn-shuf" onclick="ctl('shuffle')"><i class="fa-solid fa-shuffle"></i></button>
-        <button class="ctrl" id="btn-prev" onclick="ctl('prev')"><i class="fa-solid fa-backward-step"></i></button>
-        <button class="ctrl play" id="btn-play" onclick="togglePlay()"><i class="fa-solid fa-play" id="pi"></i></button>
-        <button class="ctrl" id="btn-next" onclick="ctl('next')"><i class="fa-solid fa-forward-step"></i></button>
-        <button class="ctrl small" id="btn-loop" onclick="ctl('loop')"><i class="fa-solid fa-repeat"></i></button>
-    </div>
-
-    <!-- Extra: Volume + EQ + Mode -->
-    <div class="extra" id="extra-section">
-        <div class="extra-header" onclick="toggleExtra()">
-            <span>AUDIO</span>
-            <button class="preset-btn" onclick="event.stopPropagation();tg('pr-om')"><span id="cur-preset-txt">PRESETS</span> <i class="fa-solid fa-chevron-down"></i></button>
-        </div>
-        <!-- Mode Toggle -->
-        <div class="mode-row">
-            <button class="mode-btn active" id="mode-server" onclick="setPlayMode('server')"><i class="fa-solid fa-server"></i> Server</button>
-            <button class="mode-btn" id="mode-browser" onclick="setPlayMode('browser')"><i class="fa-solid fa-desktop"></i> Browser</button>
-        </div>
-        <!-- Volume -->
-        <div class="vol-row">
-            <i class="fa-solid fa-volume-low"></i>
-            <input type="range" id="vol-slider" min="0" max="100" value="50">
-            <span id="vol-val">50</span>
-        </div>
-        <!-- Balance -->
-        <div class="bal-row">
-            <span>L</span>
-            <input type="range" id="balanceSlider" min="-100" max="100" value="0" step="5">
-            <span>R</span>
-        </div>
-        <!-- EQ -->
-        <div class="eq-row" id="eq-row">
-            <div class="eq-bar-wrap" data-f="1"><div class="eq-track"><div class="eq-fill" id="eq-f1" style="height:50%;"></div></div><span class="eq-label">Sub</span></div>
-            <div class="eq-bar-wrap" data-f="2"><div class="eq-track"><div class="eq-fill" id="eq-f2" style="height:50%;"></div></div><span class="eq-label">Low</span></div>
-            <div class="eq-bar-wrap" data-f="3"><div class="eq-track"><div class="eq-fill" id="eq-f3" style="height:50%;"></div></div><span class="eq-label">Kick</span></div>
-            <div class="eq-bar-wrap" data-f="4"><div class="eq-track"><div class="eq-fill" id="eq-f4" style="height:50%;"></div></div><span class="eq-label">Mid</span></div>
-            <div class="eq-bar-wrap" data-f="5"><div class="eq-track"><div class="eq-fill" id="eq-f5" style="height:50%;"></div></div><span class="eq-label">Body</span></div>
-            <div class="eq-bar-wrap" data-f="6"><div class="eq-track"><div class="eq-fill" id="eq-f6" style="height:50%;"></div></div><span class="eq-label">Vox</span></div>
-            <div class="eq-bar-wrap" data-f="7"><div class="eq-track"><div class="eq-fill" id="eq-f7" style="height:50%;"></div></div><span class="eq-label">Detl</span></div>
-            <div class="eq-bar-wrap" data-f="8"><div class="eq-track"><div class="eq-fill" id="eq-f8" style="height:50%;"></div></div><span class="eq-label">Pres</span></div>
-            <div class="eq-bar-wrap" data-f="9"><div class="eq-track"><div class="eq-fill" id="eq-f9" style="height:50%;"></div></div><span class="eq-label">Treb</span></div>
-            <div class="eq-bar-wrap" data-f="10"><div class="eq-track"><div class="eq-fill" id="eq-f10" style="height:50%;"></div></div><span class="eq-label">Air</span></div>
-        </div>
-    </div>
-
-    <!-- Search -->
-    <div class="search-wrap">
-        <form onsubmit="searchYt(event)" class="search-form">
-            <input id="searchInput" class="search-input" placeholder="Search song, artist or paste URL" autocomplete="off">
-            <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
-        </form>
+    <!-- Bottom Tab Bar -->
+    <div class="tabbar">
+        <button class="tabbar-item active" onclick="switchTab('now')" id="tab-now"><i class="fa-solid fa-play"></i> Now</button>
+        <button class="tabbar-item" onclick="switchTab('search')" id="tab-search"><i class="fa-solid fa-search"></i> Search</button>
+        <button class="tabbar-item" onclick="switchTab('queue')" id="tab-queue"><i class="fa-solid fa-list"></i> Queue</button>
+        <button class="tabbar-item" onclick="switchTab('menu')" id="tab-menu"><i class="fa-solid fa-ellipsis-h"></i> Menu</button>
     </div>
 </div>
 
-<!-- Media Center -->
+<!-- Library Overlay -->
 <div id="pm" class="overlay">
-    <div class="overlay-hdr"><h2>Media Center</h2><button onclick="tg('pm')" class="close-btn">&times;</button></div>
+    <div class="overlay-hdr"><span>Media Center</span><button onclick="tg('pm')" class="close-btn">&times;</button></div>
     <div class="tab-bar">
-        <button class="tab-btn active" onclick="switchTab('lib')" id="tab-lib">FILES</button>
-        <button class="tab-btn" onclick="switchTab('pl')" id="tab-pl">SAVED</button>
-        <button class="tab-btn" onclick="switchTab('queue')" id="tab-queue">QUEUE</button>
+        <button class="tab-btn active" onclick="libTab('files')" id="libtab-files">FILES</button>
+        <button class="tab-btn" onclick="libTab('saved')" id="libtab-saved">SAVED</button>
     </div>
-    <div id="content-lib" class="tab-content active">
-        <div class="toolbar">
-            <button onclick="scanLibrary()" class="tb-btn primary"><i class="fa-solid fa-sync"></i> RESCAN</button>
-            <div class="search-form" style="flex:1;"><input id="lib-search" class="search-input" placeholder="Filter..." oninput="filterLibraryLocal(this.value)" style="border-radius:17px;"></div>
-        </div>
-        <div id="scan-status" style="font-size:0.65rem;color:var(--text-dim);text-align:center;padding-bottom:4px;">Ready</div>
-        <div id="lib-list" class="scroll-list"></div>
+    <div id="lib-content-files" class="scroll-list" style="display:block;">
+        <div class="search-form" style="margin-bottom:8px;"><input id="lib-search" class="search-input" placeholder="Filter..." oninput="filterLibraryLocal(this.value)"></div>
+        <div id="lib-list"></div>
     </div>
-    <div id="content-pl" class="tab-content">
+    <div id="lib-content-saved" class="scroll-list" style="display:none;">
         <div class="search-form" style="margin-bottom:8px;">
             <input id="pl-name" class="search-input" placeholder="Name" style="border-radius:0;">
             <input id="pl-url" class="search-input" placeholder="URL" style="border-radius:0;border-left:none;">
             <button onclick="addPl()" class="search-btn" style="width:auto;padding:0 14px;"><i class="fa-solid fa-plus"></i></button>
         </div>
-        <div id="pl-list" class="scroll-list"></div>
-    </div>
-    <div id="content-queue" class="tab-content">
-        <div class="toolbar">
-            <span style="font-size:0.65rem;color:var(--text-dim);font-weight:600;">PLAYING NEXT</span>
-            <button onclick="exportM3U()" class="tb-btn"><i class="fa-solid fa-download"></i> M3U</button>
-            <button onclick="document.getElementById('m3u-input').click()" class="tb-btn"><i class="fa-solid fa-upload"></i> M3U</button>
-            <input type="file" id="m3u-input" accept=".m3u,.m3u8,.pls" style="display:none" onchange="importM3U(event)">
-            <button onclick="clearQueue()" class="tb-btn" style="color:#ff4444;">Clear</button>
-        </div>
-        <div id="queue-list" class="scroll-list"></div>
+        <div id="pl-list"></div>
     </div>
 </div>
 
-<!-- Output Popup -->
-<div id="om" class="popup">
-    <div class="popup-box">
-        <div class="overlay-hdr"><span>Audio Output</span><button onclick="tg('om')" class="close-btn">&times;</button></div>
-        <div style="padding:12px;display:flex;flex-direction:column;gap:6px;">
-            <button class="ctrl" style="border-radius:10px;width:100%;justify-content:flex-start;gap:12px;padding:10px 14px;" onclick="manualOut('jack')"><i class="fa-solid fa-headphones"></i> Line Out (3.5mm)</button>
-            <button class="ctrl" style="border-radius:10px;width:100%;justify-content:flex-start;gap:12px;padding:10px 14px;" onclick="manualOut('hdmi')"><i class="fa-solid fa-tv"></i> HDMI Audio</button>
-            <button class="ctrl" style="border-radius:10px;width:100%;justify-content:flex-start;gap:12px;padding:10px 14px;" onclick="openBt()"><i class="fa-brands fa-bluetooth-b"></i> Bluetooth</button>
-            <div id="bt-panel" style="display:none;margin-top:6px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:0.65rem;color:var(--text-dim);">DEVICES</span><button onclick="scanBt()" class="tb-btn">SCAN</button></div>
-                <div id="bt-list" class="scroll-list" style="height:110px;"></div>
-                <div id="bt-status" style="font-size:0.6rem;color:var(--pink);text-align:center;"></div>
-            </div>
-        </div>
+<!-- Output Overlay -->
+<div id="om" class="overlay" style="height:auto;max-height:60%;">
+    <div class="overlay-hdr"><span>Audio Output</span><button onclick="tg('om')" class="close-btn">&times;</button></div>
+    <div style="padding:12px 16px;">
+        <div class="menu-item" onclick="manualOut('jack')"><i class="fa-solid fa-headphones"></i><span class="label">Line Out (3.5mm)</span></div>
+        <div class="menu-item" onclick="manualOut('hdmi')"><i class="fa-solid fa-tv"></i><span class="label">HDMI Audio</span></div>
+        <div class="menu-item" onclick="openBt()"><i class="fa-brands fa-bluetooth-b"></i><span class="label">Bluetooth</span></div>
     </div>
 </div>
 
-<!-- Timer Popup -->
-<div id="tm" class="popup">
-    <div class="popup-box">
-        <div class="overlay-hdr"><span>Sleep Timer</span><button onclick="tg('tm')" class="close-btn">&times;</button></div>
-        <div style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button onclick="setTimer(15)" class="ctrl" style="flex:1;border-radius:10px;flex-direction:column;gap:4px;height:auto;padding:10px;"><i class="fa-regular fa-clock"></i><span style="font-size:0.65rem;">15m</span></button>
-            <button onclick="setTimer(30)" class="ctrl" style="flex:1;border-radius:10px;flex-direction:column;gap:4px;height:auto;padding:10px;"><i class="fa-solid fa-clock"></i><span style="font-size:0.65rem;">30m</span></button>
-            <button onclick="setTimer(60)" class="ctrl" style="flex:1;border-radius:10px;flex-direction:column;gap:4px;height:auto;padding:10px;"><i class="fa-solid fa-hourglass-half"></i><span style="font-size:0.65rem;">1h</span></button>
-            <button onclick="setTimer(0)" class="ctrl" style="flex:1;border-radius:10px;flex-direction:column;gap:4px;height:auto;padding:10px;border:1px solid #ff4444;"><i class="fa-solid fa-ban" style="color:#ff4444;"></i><span style="font-size:0.65rem;">Off</span></button>
-        </div>
-    </div>
-</div>
-
-<!-- Presets Popup -->
-<div id="pr-om" class="popup">
-    <div class="popup-box">
-        <div class="overlay-hdr"><span>EQ Presets</span><button onclick="tg('pr-om')" class="close-btn">&times;</button></div>
-        <div id="preset-container" class="preset-grid"></div>
-    </div>
+<!-- Presets Overlay -->
+<div id="pr-om" class="overlay" style="height:auto;max-height:60%;">
+    <div class="overlay-hdr"><span>EQ Presets</span><button onclick="tg('pr-om')" class="close-btn">&times;</button></div>
+    <div id="preset-container" class="preset-grid"></div>
 </div>
 
 <!-- Lyrics Overlay -->
-<div id="lym" class="overlay" style="background:rgba(5,5,10,0.95);">
-    <div class="overlay-hdr" style="border:none;">
-        <div style="display:flex;align-items:center;gap:10px;"><h2 style="font-size:0.8rem;">LYRICS</h2><button onclick="fetchLyrics()" class="ctrl" style="width:26px;height:26px;font-size:0.65rem;"><i class="fa-solid fa-rotate-right"></i></button></div>
-        <button onclick="toggleLyrics()" class="close-btn">&times;</button>
-    </div>
+<div id="lym" class="overlay">
+    <div class="overlay-hdr"><span>Lyrics</span><button onclick="tg('lym')" class="close-btn">&times;</button></div>
     <div id="lyrics-container" class="lyrics-scroll"><div style="margin-top:40px;color:#666;">Play a song to see lyrics</div></div>
 </div>
 
-<!-- Search Popup -->
-<div id="search-popup" class="popup">
-    <div class="popup-box">
-        <div class="overlay-hdr"><h3>Results</h3><button onclick="closeSearch()" class="close-btn">&times;</button></div>
-        <div id="popup-content" class="scroll-list" style="max-height:60vh;padding:8px;"></div>
+<!-- Search Results Popup -->
+<div id="search-popup" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.8);align-items:flex-end;justify-content:center;" class="popup-bottom">
+    <div style="width:100%;max-width:420px;background:var(--bg);border-radius:20px 20px 0 0;padding:16px;max-height:70vh;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:700;font-size:0.9rem;">Results</span><button onclick="closeSearch()" class="close-btn">&times;</button></div>
+        <div id="popup-content" style="flex:1;overflow-y:auto;"></div>
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/script.js') }}?v=2"></script>
+<script src="/static/js/script.js?v=3"></script>
 <script>
 if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}")
-            .then(r => console.log('SW OK', r.scope))
-            .catch(e => console.log('SW Fail', e));
-    });
+    navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
 }
 </script>
 </body>
