@@ -17,7 +17,7 @@ services:
       - /mnt:/mnt:ro
       - ./data:/app/data
     environment:
-      - OWMB_PORT=${OWMB_PORT:-5000}
+      - OWMB_PORT=${OWMB_PORT:-2030}
       - OWMB_HOST=${OWMB_HOST:-0.0.0.0}
       - OWMB_DB_PATH=/app/data/music.db
       - OWMB_LOG_LEVEL=${OWMB_LOG_LEVEL:-INFO}

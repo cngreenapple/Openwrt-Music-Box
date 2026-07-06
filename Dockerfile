@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 FROM python:3.11-slim-bookworm AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    OWMB_PORT=5000 \
+    OWMB_PORT=2030 \
     OWMB_HOST=0.0.0.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -46,6 +46,6 @@ RUN chmod +x *.sh
 EXPOSE ${OWMB_PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request, os; port=os.environ.get('OWMB_PORT','5000'); urllib.request.urlopen(f'http://localhost:{port}/status')" || exit 1
+    CMD python -c "import urllib.request, os; port=os.environ.get('OWMB_PORT','2030'); urllib.request.urlopen(f'http://localhost:{port}/status')" || exit 1
 
 CMD ["python", "app.py"]

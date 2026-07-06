@@ -19,7 +19,7 @@ except ImportError:
     lib_mgr = None
 
 # Environment-based configuration
-OWMB_PORT = int(os.environ.get('OWMB_PORT', 5000))
+OWMB_PORT = int(os.environ.get('OWMB_PORT', 2030))
 OWMB_HOST = os.environ.get('OWMB_HOST', '0.0.0.0')
 OWMB_LOG_LEVEL = os.environ.get('OWMB_LOG_LEVEL', 'INFO').upper()
 OWMB_DB_PATH = os.environ.get('OWMB_DB_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'music.db'))

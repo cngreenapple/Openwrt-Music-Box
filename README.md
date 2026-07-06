@@ -20,6 +20,16 @@ OpenWrt-Music-Box is a lightweight, Dockerized music player tailored specificall
 
 ---
 
+## 🚀 One-Command Installation
+
+**Debian / Ubuntu / Alpine (with mpv):**
+```bash
+git clone https://github.com/cngreenapple/openwrt-music-box.git && cd openwrt-music-box && chmod +x install.sh && ./install.sh
+```
+Akses di: **http://localhost:2030**
+
+---
+
 ## 🛠️ Prerequisites
 
 1.  **Hardware:** An OpenWrt Router/STB with a USB port.
@@ -59,13 +69,13 @@ Script akan mendeteksi sistem Anda dan melakukan semuanya secara otomatis:
 ./run.sh
 
 # Di OpenWrt (tanpa mpv, via Docker):
-docker-compose up -d --build
+OWMB_PORT=2030 docker-compose up -d --build
 
 # Atau langsung:
 source venv/bin/activate && python3 app.py
 ```
 
-Akses di: **http://localhost:5000** atau **http://<ip-router>:5000**
+Akses di: **http://localhost:2030** atau **http://<ip-router>:2030**
 
 ---
 
@@ -90,18 +100,13 @@ Aktifkan service:
 Di OpenWrt, Docker build container sering gagal resolve DNS. Konfigurasikan **daemon.json**:
 
 ```bash
-# Buat folder konfigurasi Docker
 mkdir -p /etc/docker
-
-# Set DNS untuk Docker daemon (build & runtime)
 cat << 'EOF' > /etc/docker/daemon.json
 {
   "dns": ["8.8.8.8", "1.1.1.1"],
   "iptables": false
 }
 EOF
-
-# Restart Docker daemon
 /etc/init.d/dockerd restart
 ```
 
@@ -124,7 +129,6 @@ cat << 'EOF' > /etc/dbus-1/system.d/bluealsa.conf
   </policy>
 </busconfig>
 EOF
-
 /etc/init.d/dbus reload
 /etc/init.d/bluetoothd restart
 ```
@@ -134,7 +138,7 @@ EOF
 ```bash
 git clone https://github.com/cngreenapple/openwrt-music-box.git
 cd openwrt-music-box
-docker-compose up -d --build
+OWMB_PORT=2030 docker-compose up -d --build
 ```
 
 > **Note:** Container mount `/dev/snd` dan `/var/run/dbus` untuk akses audio hardware dan Bluetooth.
@@ -144,7 +148,6 @@ docker-compose up -d --build
 ### 📦 Metode Manual (Semua Platform)
 
 ```bash
-# Clone
 git clone https://github.com/cngreenapple/openwrt-music-box.git
 cd openwrt-music-box
 
@@ -180,7 +183,7 @@ OpenWrt-Music-Box can be configured using the following environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OWMB_PORT` | `5000` | Web UI port |
+| `OWMB_PORT` | `2030` | Web UI port |
 | `OWMB_HOST` | `0.0.0.0` | Bind address |
 | `OWMB_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
 | `OWMB_DB_PATH` | `./music.db` | Path to SQLite database file |
@@ -188,14 +191,14 @@ OpenWrt-Music-Box can be configured using the following environment variables:
 
 Example:
 ```bash
-# Run with custom port and debug logging
+# Run with custom port (default 2030) and debug logging
 OWMB_PORT=8080 OWMB_LOG_LEVEL=DEBUG python3 app.py
 ```
 
 Or in `docker-compose.yml`:
 ```yaml
 environment:
-  - OWMB_PORT=5000
+  - OWMB_PORT=2030
   - OWMB_LOG_LEVEL=DEBUG
   - OWMB_DEFAULT_PATH=/mnt/sda1/Music
 ```
@@ -220,16 +223,13 @@ cat <<'EOF' >/usr/lib/lua/luci/view/openwrtmusicbox.htm
     <iframe id="owmb-player" style="width: 100%; min-height: 90vh; border: none; border-radius: 2px;"></iframe>
 </div>
 <script type="text/javascript">
-    document.getElementById("owmb-player").src = window.location.protocol + "//" + window.location.hostname + ":5000";
+    document.getElementById("owmb-player").src = window.location.protocol + "//" + window.location.hostname + ":2030";
 </script>
 <%+footer%>
 EOF
 
-# Clear LuCI cache
 rm -rf /tmp/luci-*
 ```
-
-Refresh your LuCI Web Interface, and you will see the **OpenWrt-Music-Box** tab right next to System and Network!
 
 ---
 
@@ -243,7 +243,6 @@ Refresh your LuCI Web Interface, and you will see the **OpenWrt-Music-Box** tab 
 
 ### 🎤 Lyrics
 - Click the microphone icon to fetch real-time synced lyrics from LRCLIB.
-- Synced lyrics scroll automatically with the music.
 
 ### 🔊 Audio Output
 - **Line Out (Jack):** Default analog output via 3.5mm jack.
@@ -307,10 +306,7 @@ openwrt-music-box/
 
 Contoh melihat log:
 ```bash
-# Langsung:
 tail -f openwrt_music_box.log
-
-# Docker:
 docker logs -f openwrt-music-box
 ```
 
@@ -320,13 +316,13 @@ docker logs -f openwrt-music-box
 
 | Masalah | Solusi |
 |---------|--------|
-| **mpv not found** | Di OpenWrt, mpv tidak tersedia. Gunakan metode Docker: `docker-compose up -d --build` |
+| **mpv not found** | Di OpenWrt, mpv tidak tersedia. Gunakan metode Docker: `OWMB_PORT=2030 docker-compose up -d --build` |
 | **sudo: command not found** | OpenWrt tidak punya sudo. Installer sudah otomatis handle ini via `run_cmd()` |
 | **Python venv error** | Jika `python3-venv` tidak bisa diinstall, installer akan fallback ke install system-wide |
 | **YouTube playback error** | Pastikan `yt-dlp` terinstall: `which yt-dlp`. Jika tidak, jalankan ulang installer |
 | **Bluetooth not working** | Pastikan D-Bus policy sudah dibuat (lihat Step 2 Docker) |
 | **No audio** | Periksa output device di Web UI (Jack/HDMI/Bluetooth). Pastikan USB DAC terdeteksi |
-| **Docker build gagal: DNS resolution error** | Masalah umum di OpenWrt. Build container tidak bisa resolve `deb.debian.org`. Solusi: (1) Pastikan file `docker-compose.yml` sudah punya `network: host` di bagian build — lihat file tersebut. (2) Coba set DNS host: `echo "nameserver 8.8.8.8" > /etc/resolv.conf && /etc/init.d/dockerd restart`. (3) Atau gunakan perintah build manual: `cd /openwrt-music-box && docker build --network host -t openwrt-music-box . && docker-compose up -d` |
+| **Docker build gagal: DNS resolution error** | Masalah umum di OpenWrt. Build container tidak bisa resolve `deb.debian.org`. Solusi: (1) Pastikan file `docker-compose.yml` sudah punya `network: host` di bagian build — lihat file tersebut. (2) Coba set DNS host: `echo "nameserver 8.8.8.8" > /etc/resolv.conf && /etc/init.d/dockerd restart`. (3) Atau gunakan perintah build manual: `cd /openwrt-music-box && docker build --network host -t openwrt-music-box . && OWMB_PORT=2030 docker-compose up -d` |
 | **Docker build lambat / timeout** | Build pertama perlu download base image Python + Debian (~300MB). Pastikan koneksi internet stabil. Bisa memakan waktu 5-15 menit tergantung kecepatan internet. |
 | **`run.sh` tidak ditemukan** | Installer membuat `run.sh` di awal. Jika hilang, buat manual: `echo 'python3 app.py' > run.sh && chmod +x run.sh` |
 | **install.sh berhenti di tengah** | Koneksi internet terputus saat download. Jalankan ulang: `./install.sh` — komponen yang sudah berhasil akan di-skip |
