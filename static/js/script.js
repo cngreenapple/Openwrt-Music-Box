@@ -347,6 +347,25 @@ async function loadLocalFiles(path) {
     } catch(e) { l.innerHTML = '<div style="text-align:center;color:red;">Error</div>'; }
 }
 
+function uploadFiles(e) {
+    const files = e.target.files;
+    if(!files.length) return;
+    const status = document.getElementById('scan-status');
+    Array.from(files).forEach((file, i) => {
+        status.textContent = `Uploading ${i+1}/${files.length}...`;
+        const form = new FormData();
+        form.append('file', file);
+        fetch('/upload', {method:'POST', body:form})
+            .then(r=>r.json())
+            .then(d => {
+                if(d.status === 'ok') {
+                    showToast(`Uploaded: ${file.name}`);
+                    if(i === files.length-1) { status.textContent = 'Upload complete'; loadLocalFiles('/root/uploads'); }
+                } else showToast('Upload failed: '+file.name);
+            }).catch(() => showToast('Upload error: '+file.name));
+    });
+}
+
 function scanLibrary() {
     const s = document.getElementById('scan-status'); s.textContent = 'Scanning...';
     fetch('/library/scan').then(() => {

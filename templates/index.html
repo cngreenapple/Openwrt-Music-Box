@@ -125,6 +125,8 @@
     <div id="content-files" class="tab-content active">
         <div class="toolbar">
             <button onclick="scanLibrary()" class="tb-btn primary"><i class="fa-solid fa-sync"></i> RESCAN</button>
+            <button onclick="document.getElementById('upload-input').click()" class="tb-btn"><i class="fa-solid fa-upload"></i> UPLOAD</button>
+            <input type="file" id="upload-input" accept=".mp3,.flac,.wav,.m4a,.ogg,.opus,.wma,.aac" style="display:none" multiple onchange="uploadFiles(event)">
             <div class="path-display"><i class="fa-solid fa-search"></i><input id="lib-search" placeholder="Filter..." oninput="filterLibraryLocal(this.value)"></div>
         </div>
         <div id="scan-status" style="font-size:0.65rem;color:var(--dim);text-align:center;">Ready</div>

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file, Response, abort
+import uuid
 import subprocess
 import json
 import os
@@ -40,6 +41,8 @@ BP_MODE_FILE = "/root/bp_mode"
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 AUDIO_EXTS = ('.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus', '.wma', '.aac', '.dsf', '.dff')
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 state_lock = Lock()
 yt_music = YTMusic()
@@ -605,6 +608,31 @@ def get_playlist():
         try: return jsonify(json.load(open(PLAYLIST_FILE)))
         except: pass
     return jsonify([])
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files: return jsonify({"error":"no file"}),400
+    f = request.files['file']
+    if not f.filename: return jsonify({"error":"no filename"}),400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in AUDIO_EXTS: return jsonify({"error":"unsupported format"}),400
+    # Generate unique filename
+    uid = str(uuid.uuid4())[:8]
+    safe_name = f"{uid}_{f.filename}"
+    save_path = os.path.join(UPLOAD_DIR, safe_name)
+    f.save(save_path)
+    logger.info(f"Uploaded: {safe_name}")
+    return jsonify({"status":"ok","filename":safe_name,"path":save_path})
+
+@app.route('/uploads')
+def list_uploads():
+    files = []
+    if os.path.exists(UPLOAD_DIR):
+        for fn in sorted(os.listdir(UPLOAD_DIR), key=lambda x: os.path.getmtime(os.path.join(UPLOAD_DIR, x)), reverse=True):
+            fp = os.path.join(UPLOAD_DIR, fn)
+            if os.path.isfile(fp) and fn.lower().endswith(AUDIO_EXTS):
+                files.append({"name":fn, "path":fp, "size":os.path.getsize(fp)})
+    return jsonify(files)
 
 @app.route('/save_playlist', methods=['POST'])
 def save_playlist():
