@@ -272,20 +272,42 @@ DOCKERDNS
     fi
     
     # Build & start container
-    log_info "Building Docker image (this may take 5-15 minutes first time)..."
     cd "$SCRIPT_DIR"
-    OWMB_PORT=$OWMB_PORT docker-compose up -d --build 2>&1 | tail -3
+    
+    log_info "Step 1/2: Building Docker image (this may take 5-15 minutes first time)..."
+    echo ""
+    OWMB_PORT=$OWMB_PORT docker-compose build 2>&1
+    BUILD_EXIT=$?
+    
+    if [ $BUILD_EXIT -ne 0 ]; then
+        log_warn "Docker build had issues. Trying alternative DNS method..."
+        # Fallback: build with --network host if DNS failed
+        docker build --network host -t openwrt-music-box . 2>&1
+        BUILD_EXIT=$?
+    fi
+    
+    if [ $BUILD_EXIT -eq 0 ]; then
+        echo ""
+        log_ok "Build successful! Starting container..."
+        OWMB_PORT=$OWMB_PORT docker-compose up -d 2>&1
+    else
+        log_error "Docker build failed. Check Docker DNS configuration."
+        log_info "Try manual: cd $SCRIPT_DIR && OWMB_PORT=$OWMB_PORT docker-compose up -d --build"
+    fi
     
     # Tunggu container ready
+    echo ""
     log_info "Waiting for container to be ready..."
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
         sleep 2
         if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "openwrt-music-box"; then
             log_ok "Docker container is running!"
             SERVICE_STARTED=true
             break
         fi
-        log_info "  Still waiting... ($i/10)"
+        if [ $((i % 3)) -eq 0 ]; then
+            log_info "  Still building... ($((i*2))s elapsed)"
+        fi
     done
     
 elif [ "$PKG_MANAGER" != "unknown" ]; then
