@@ -272,7 +272,7 @@ else
     echo "    docker-compose up -d --build"
 fi
 echo ""
-echo -e "  ${GREEN}Access:${NC} http://localhost:5000"
+    echo -e "  ${GREEN}Access:${NC} http://localhost:2030"
 echo ""
 
 if [ "$ALL_OK" = false ]; then
