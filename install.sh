@@ -289,27 +289,24 @@ echo -e "${CYAN}============================================${NC}"
 echo ""
 python3 -c "
 import sys
-# Flask
 try:
     import flask; print(f'  ✅ Flask {flask.__version__}')
 except: print('  ❌ Flask')
-# YTMusicAPI
 try:
-    import ytmusicapi
-    try:
-        v = ytmusicapi.__version__
-    except:
-        v = 'terinstall'
+    import importlib.metadata as m
+    v = m.version('ytmusicapi')
     print(f'  ✅ YTMusicAPI {v}')
-except ImportError:
-    print('  ❌ YTMusicAPI')
+except:
+    try:
+        import ytmusicapi; print(f'  ✅ YTMusicAPI (terinstall)')
+    except: print('  ❌ YTMusicAPI')
 " 2>/dev/null
 command -v mpv >/dev/null && echo -e "  ✅ MPV" || echo -e "  ⚠️ MPV (via Docker)"
 command -v ffmpeg >/dev/null && echo -e "  ✅ FFmpeg" || echo -e "  ❌ FFmpeg"
 command -v yt-dlp >/dev/null && echo -e "  ✅ yt-dlp v$(yt-dlp --version 2>/dev/null)" || echo -e "  ❌ yt-dlp"
 echo ""
 
-LOCAL_IP=$(ip -4 addr show 2>/dev/null | grep -oP 'inet \K[\d.]+' | grep -v 127.0.0.1 | head -1)
+LOCAL_IP=$(ip -4 addr show 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | grep -v '^127\.' | head -1)
 [ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 [ -z "$LOCAL_IP" ] && LOCAL_IP="<ip-anda>"
 
