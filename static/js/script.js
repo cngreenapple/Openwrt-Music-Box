@@ -226,8 +226,27 @@ function playSong(url, mode='play_now', title='') {
         .then(r=>r.json()).then(d => {
             if(mode === 'play_now') {
                 document.body.classList.add('playing'); showToast('▶ '+(title||'Track'));
-                if(systemState.playMode === 'browser' && !url.includes('youtube') && !url.includes('youtu.be')) {
-                    setTimeout(() => fetch('/play/current').then(r=>r.json()).then(p => { if(p.link) playBrowserTrack(p.link, p.title); }), 300);
+                if(systemState.playMode === 'browser') {
+                    if(url.includes('youtube') || url.includes('youtu.be')) {
+                        // YouTube: extract audio URL via server
+                        fetch('/youtube_audio?url='+encodeURIComponent(url))
+                            .then(r=>r.json())
+                            .then(yt => {
+                                if(yt.audio_url) {
+                                    setText('tit', yt.title||title);
+                                    if(yt.thumbnail) document.getElementById('cover-img').src = yt.thumbnail;
+                                    if(browserAudio) {
+                                        browserAudio.src = '/youtube_proxy?url='+encodeURIComponent(url);
+                                        browserAudio.volume = (settings.vol||50)/100;
+                                        browserAudio.play().catch(()=>{});
+                                        isPlaying = true; updatePlayBtn();
+                                    }
+                                }
+                            }).catch(()=>{});
+                    } else {
+                        // Local file: stream via /stream
+                        setTimeout(() => fetch('/play/current').then(r=>r.json()).then(p => { if(p.link) playBrowserTrack(p.link, p.title); }), 300);
+                    }
                 } else { isPlaying = true; updatePlayBtn(); }
             } else showToast('+ Queue ('+d.queue_len+')');
         });

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, abort
+from flask import Flask, render_template, request, jsonify, send_file, Response, abort, redirect
 import uuid
 import subprocess
 import json
@@ -147,13 +147,12 @@ def play_next():
             app_state["current_index"] = nx
             s = app_state["queue"][nx]
             if app_state["play_mode"] == "browser" and os.path.exists(s['link']):
-                app_state["status"] = "playing"
-                app_state["title"] = s['title']
+                app_state["status"] = "playing"; app_state["title"] = s['title']
             else:
                 threading.Thread(target=trigger_server_play, args=(s['link'],)).start()
         else: app_state["status"] = "stopped"
 
-# === METADATA WORKER (CRITICAL untuk audio) ===
+# === METADATA WORKER ===
 def metadata_worker():
     global needs_restore
     last_path = ""
@@ -162,16 +161,11 @@ def metadata_worker():
     while True:
         try:
             bt_mac, bt_name = get_connected_bt()
-            with state_lock:
-                app_state["connected_bt_mac"] = bt_mac or ""
-                app_state["connected_bt_name"] = bt_name or ""
-            # Sleep timer
+            with state_lock: app_state["connected_bt_mac"] = bt_mac or ""; app_state["connected_bt_name"] = bt_name or ""
             with state_lock:
                 target = app_state["sleep_target"]
                 if target > 0 and time.time() >= target:
-                    app_state["sleep_target"] = 0
-                    app_state["queue"] = []
-                    app_state["current_index"] = -1
+                    app_state["sleep_target"] = 0; app_state["queue"] = []; app_state["current_index"] = -1
                     threading.Thread(target=mpv_send, args=(["stop"],)).start()
             mpv_ready = False
             try:
@@ -181,22 +175,22 @@ def metadata_worker():
                 idle_counter = 0
                 path = mpv_send(["get_property", "path"])
                 if path and (path != last_path or needs_restore):
-                    last_path = path
-                    needs_restore = False
-                    time.sleep(0.8)  # Beri waktu MPV settle
+                    last_path = path; needs_restore = False; time.sleep(0.8)
                     with state_lock: saved_vol = app_state["volume"]
-                    mpv_send(["set_property", "volume", saved_vol])
-                    update_mpv_filters()
+                    mpv_send(["set_property", "volume", saved_vol]); update_mpv_filters()
                 is_eof = mpv_send(["get_property", "eof-reached"])
                 is_idle = mpv_send(["get_property", "idle-active"])
                 with state_lock:
                     cm = app_state.get("manual_stop", False)
                     cs = app_state.get("status", "stopped")
                 if cm and is_idle:
-                    with state_lock: app_state["manual_stop"] = False
+                    with state_lock:
+                        app_state["manual_stop"] = False
                 elif is_eof is True or (is_idle is True and cs == "playing"):
-                    play_next(); time.sleep(1); continue
-                # Metadata
+                    play_next()
+                    time.sleep(1)
+                    continue
+                # Metadata extract
                 queue_title = "Unknown Title"
                 with state_lock:
                     if app_state["queue"] and app_state["current_index"] < len(app_state["queue"]):
@@ -207,7 +201,6 @@ def metadata_worker():
                 if mpv_title:
                     junk = any(x in mpv_title.lower() for x in ["http","www.",".com","webm&","googlevideo","?source"])
                     if not junk: final_title = mpv_title
-                # Extract artist from title if not in metadata
                 artist = ""
                 for k in ["artist","performer","composer"]:
                     for dk, dv in meta.items():
@@ -216,13 +209,14 @@ def metadata_worker():
                 if not artist or artist.lower() == "unknown artist":
                     if " - " in (queue_title if " - " in queue_title else final_title):
                         parts = (queue_title if " - " in queue_title else final_title).split(" - ", 1)
-                        artist = parts[0].strip()
-                        final_title = parts[1].strip()
+                        artist = parts[0].strip(); final_title = parts[1].strip()
                     else: artist = "Unknown Artist"
-                album = ""
+                album = ""; genre = ""; year = ""
                 for dk, dv in meta.items():
-                    if dk.lower() == "album": album = dv; break
-                # Tech info
+                    kl = dk.lower()
+                    if kl == "album": album = dv
+                    elif kl in ("genre","artist"): pass
+                    elif kl in ("date","year","original_date"): year = dv[:4] if dv else ""
                 codec = (mpv_send(["get_property","audio-codec-name"]) or "UNK").upper()
                 br = mpv_send(["get_property","audio-bitrate"])
                 br_str = f"{int(br)//1000}kbps" if br and int(br)>0 else ""
@@ -241,27 +235,73 @@ def metadata_worker():
                 paused = mpv_send(["get_property","pause"])
                 status = "paused" if paused else "playing"
                 with state_lock:
-                    app_state.update({
-                        "title": final_title, "artist": artist, "album": album,
-                        "status": status, "tech_info": tech,
-                        "current_time": mpv_send(["get_property","time-pos"]) or 0,
-                        "total_time": mpv_send(["get_property","duration"]) or 0
-                    })
+                    app_state.update({"title": final_title, "artist": artist, "album": album, "genre": genre, "year": year,
+                        "status": status, "tech_info": tech, "current_time": mpv_send(["get_property","time-pos"]) or 0,
+                        "total_time": mpv_send(["get_property","duration"]) or 0})
                     vol = mpv_send(["get_property","volume"])
                     if vol is not None: app_state["volume"] = vol
             else:
                 idle_counter += 1
                 if idle_counter == 5:
-                    with state_lock: app_state["status"] = "stopped"
-                with state_lock: ist = app_state["status"]
-                if idle_counter == 15 and ist != "stopped": play_next()
-        except Exception as e:
-            logger.error(f"metadata_worker error: {e}")
+                    with state_lock:
+                        app_state["status"] = "stopped"
+                with state_lock:
+                    ist = app_state["status"]
+                if idle_counter == 15 and ist != "stopped":
+                    play_next()
+        except Exception as e: logger.error(f"metadata_worker error: {e}")
         time.sleep(1)
 
 threading.Thread(target=metadata_worker, daemon=True).start()
 
-# === ROUTES ===
+# ========================
+# YOUTUBE STREAM EXTRACT
+# ========================
+def youtube_extract(url):
+    """Extract audio stream URL from YouTube using yt-dlp."""
+    try:
+        import yt_dlp
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'quiet': True, 'no_warnings': True,
+            'extract_flat': False, 'skip_download': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info.get('title', 'Unknown')
+            thumbnail = info.get('thumbnail', '')
+            duration = info.get('duration', 0)
+            # Get best audio-only format URL
+            audio_url = ""
+            formats = info.get('formats', [])
+            audio_only = [f for f in formats if f.get('vcodec') == 'none' and f.get('acodec') != 'none']
+            if audio_only:
+                audio_only.sort(key=lambda f: f.get('tbr', 0) or 0, reverse=True)
+                audio_url = audio_only[0].get('url', '')
+            if not audio_url:
+                for f in formats:
+                    if f.get('url') and f.get('acodec') != 'none':
+                        audio_url = f['url']
+                        break
+            if not audio_url:
+                audio_url = info.get('url', '')
+            return {'audio_url': audio_url, 'title': title, 'thumbnail': thumbnail, 'duration': duration}
+    except ImportError:
+        # Fallback: subprocess yt-dlp
+        try:
+            import subprocess
+            result = subprocess.run(['yt-dlp', '-f', 'bestaudio', '--get-url', url], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                audio_url = result.stdout.strip()
+                return {'audio_url': audio_url, 'title': '', 'thumbnail': '', 'duration': 0}
+        except: pass
+    except Exception as e:
+        logger.error(f"youtube_extract error: {e}")
+    return {'error': 'Failed to extract audio URL'}
+
+# ========================
+# ROUTES
+# ========================
 @app.route('/')
 def index(): return render_template('index.html')
 
@@ -276,6 +316,48 @@ def status():
             r["timer_active"] = rem > 0
         else: r["timer_display"] = "OFF"; r["timer_active"] = False
         return jsonify(r)
+
+@app.route('/youtube_audio')
+def youtube_audio():
+    """Extract and proxy YouTube audio stream."""
+    url = request.args.get('url', '')
+    if not url: return jsonify({"error": "no url"}), 400
+    result = youtube_extract(url)
+    if 'error' in result:
+        return jsonify(result), 500
+    # Get title & thumb for state
+    with state_lock:
+        app_state["title"] = result.get('title', 'YouTube Audio')
+        app_state["thumb"] = result.get('thumbnail', '')
+        app_state["artist"] = "YouTube"
+        app_state["status"] = "playing"
+        app_state["total_time"] = result.get('duration', 0)
+    audio_url = result.get('audio_url', '')
+    if not audio_url:
+        return jsonify({"error": "no audio url"}), 500
+    # Redirect to the actual audio stream
+    # For CORS issues, we can proxy, but redirect is simpler
+    return jsonify({"audio_url": audio_url, "title": result['title'], "thumbnail": result.get('thumbnail', '')})
+
+@app.route('/youtube_proxy')
+def youtube_proxy():
+    """Proxy YouTube audio stream through this server."""
+    url = request.args.get('url', '')
+    if not url: return jsonify({"error": "no url"}), 400
+    result = youtube_extract(url)
+    if 'error' in result or not result.get('audio_url'):
+        return jsonify({"error": "failed to extract"}), 500
+    audio_url = result['audio_url']
+    # Proxy the stream
+    try:
+        req = requests.get(audio_url, stream=True, timeout=10)
+        def generate():
+            for chunk in req.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        return Response(generate(), content_type='audio/webm', status=req.status_code)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/stream')
 def stream_file():
@@ -294,8 +376,7 @@ def stream_file():
             with open(path, 'rb') as f: f.seek(byte1); data = f.read(length)
             resp = Response(data, 206, mimetype=mime, content_type=mime, direct_passthrough=True)
             resp.headers.add('Content-Range', f'bytes {byte1}-{byte2}/{file_size}')
-            resp.headers.add('Accept-Ranges', 'bytes')
-            resp.headers.add('Content-Length', str(length))
+            resp.headers.add('Accept-Ranges', 'bytes'); resp.headers.add('Content-Length', str(length))
             return resp
     return send_file(path, mimetype=mime)
 
@@ -412,14 +493,20 @@ def play():
             app_state["queue"] = [{'link':url, 'title':title}]
             app_state["current_index"] = 0
             app_state["error_count"] = 0
-            if app_state["play_mode"] == "browser" and os.path.exists(url):
-                app_state["status"] = "playing"; app_state["title"] = title
+            if app_state["play_mode"] == "browser":
+                # Browser mode — for YouTube, we'll extract in frontend
+                app_state["status"] = "playing"
+                app_state["title"] = title
             else:
                 threading.Thread(target=trigger_server_play, args=(url,)).start()
         elif mode == 'enqueue':
             app_state["queue"].append({'link':url, 'title':title})
             if app_state["status"]=="stopped" and len(app_state["queue"])==1:
-                app_state["current_index"]=0; threading.Thread(target=trigger_server_play, args=(url,)).start()
+                app_state["current_index"]=0
+                if app_state["play_mode"] == "browser":
+                    app_state["status"] = "playing"; app_state["title"] = title
+                else:
+                    threading.Thread(target=trigger_server_play, args=(url,)).start()
     return jsonify({"status":"ok","mode":mode,"queue_len":len(app_state["queue"])})
 
 @app.route('/play/mode')
@@ -559,8 +646,7 @@ def import_m3u():
     for line in data.splitlines():
         line = line.strip()
         if not line or line.startswith("#EXTM3U"): continue
-        if line.startswith("#EXTINF:"):
-            p = line.split(",",1); ct = p[1].strip() if len(p)>1 else "Unknown"; continue
+        if line.startswith("#EXTINF:"): p = line.split(",",1); ct = p[1].strip() if len(p)>1 else "Unknown"; continue
         if line.startswith("#"): continue
         if line: tr.append({"link":line,"title":ct}); ct="Unknown"
     with state_lock:
@@ -621,7 +707,6 @@ def upload_file():
     if not f.filename: return jsonify({"error":"no filename"}),400
     ext = os.path.splitext(f.filename)[1].lower()
     if ext not in AUDIO_EXTS: return jsonify({"error":"unsupported format"}),400
-    # Generate unique filename
     uid = str(uuid.uuid4())[:8]
     safe_name = f"{uid}_{f.filename}"
     save_path = os.path.join(UPLOAD_DIR, safe_name)
