@@ -288,12 +288,21 @@ echo -e "${GREEN}       ✅ INSTALLATION COMPLETE!${NC}"
 echo -e "${CYAN}============================================${NC}"
 echo ""
 python3 -c "
+import sys
+# Flask
 try:
     import flask; print(f'  ✅ Flask {flask.__version__}')
 except: print('  ❌ Flask')
+# YTMusicAPI
 try:
-    import ytmusicapi; print(f'  ✅ YTMusicAPI {ytmusicapi.__version__}')
-except: print('  ❌ YTMusicAPI')
+    import ytmusicapi
+    try:
+        v = ytmusicapi.__version__
+    except:
+        v = 'terinstall'
+    print(f'  ✅ YTMusicAPI {v}')
+except ImportError:
+    print('  ❌ YTMusicAPI')
 " 2>/dev/null
 command -v mpv >/dev/null && echo -e "  ✅ MPV" || echo -e "  ⚠️ MPV (via Docker)"
 command -v ffmpeg >/dev/null && echo -e "  ✅ FFmpeg" || echo -e "  ❌ FFmpeg"
