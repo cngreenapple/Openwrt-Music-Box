@@ -179,9 +179,16 @@ def metadata_worker():
                     mpv_send(["set_property", "volume", saved_vol]); update_mpv_filters()
                 is_eof = mpv_send(["get_property", "eof-reached"])
                 is_idle = mpv_send(["get_property", "idle-active"])
-                with state_lock: cm = app_state.get("manual_stop", False); cs = app_state.get("status", "stopped")
-                if cm and is_idle: with state_lock: app_state["manual_stop"] = False
-                elif is_eof is True or (is_idle is True and cs == "playing"): play_next(); time.sleep(1); continue
+                with state_lock:
+                    cm = app_state.get("manual_stop", False)
+                    cs = app_state.get("status", "stopped")
+                if cm and is_idle:
+                    with state_lock:
+                        app_state["manual_stop"] = False
+                elif is_eof is True or (is_idle is True and cs == "playing"):
+                    play_next()
+                    time.sleep(1)
+                    continue
                 queue_title = "Unknown Title"
                 with state_lock:
                     if app_state["queue"] and app_state["current_index"] < len(app_state["queue"]):
@@ -232,9 +239,13 @@ def metadata_worker():
                     if vol is not None: app_state["volume"] = vol
             else:
                 idle_counter += 1
-                if idle_counter == 5: with state_lock: app_state["status"] = "stopped"
-                with state_lock: ist = app_state["status"]
-                if idle_counter == 15 and ist != "stopped": play_next()
+                if idle_counter == 5:
+                    with state_lock:
+                        app_state["status"] = "stopped"
+                with state_lock:
+                    ist = app_state["status"]
+                if idle_counter == 15 and ist != "stopped":
+                    play_next()
         except Exception as e: logger.error(f"metadata_worker error: {e}")
         time.sleep(1)
 
