@@ -1,7 +1,9 @@
 #!/bin/bash
 
-export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/app/bin
 export LC_ALL=C.UTF-8
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SOCKET="/tmp/mpv_socket"
 MODE_FILE="/root/output_mode"
@@ -13,26 +15,24 @@ START_TIME="${2:-0}"
 
 TARGET_VOL=30
 
+# Ambil volume terakhir
 if [ -S "$SOCKET" ]; then
     RAW_VOL=$(echo '{ "command": ["get_property", "volume"] }' | socat - "$SOCKET" 2>/dev/null)
     PARSED_VOL=$(echo "$RAW_VOL" | sed -n 's/.*"data": *\([0-9.]*\).*/\1/p')
-    
     if [ -n "$PARSED_VOL" ]; then
         TARGET_VOL=$PARSED_VOL
         echo "$TARGET_VOL" > "$VOL_FILE"
     fi
 fi
-
 if [ -z "$PARSED_VOL" ] && [ -f "$VOL_FILE" ]; then
     TARGET_VOL=$(cat "$VOL_FILE")
 fi
 
-# Soft kill: coba quit via socket dulu
+# Soft kill mpv sebelumnya
 if [ -S "$SOCKET" ]; then
     echo '{ "command": ["quit"] }' | socat - "$SOCKET" 2>/dev/null || true
     sleep 0.3
 fi
-# Force kill still running mpv processes
 if pgrep mpv > /dev/null 2>&1; then
     killall mpv 2>/dev/null || true
     sleep 0.3
@@ -43,21 +43,39 @@ sleep 0.5
 MPV_BIN=$(which mpv)
 if [ -z "$MPV_BIN" ]; then MPV_BIN="/usr/bin/mpv"; fi
 
-AUDIO_DEVICE="alsa/plughw:0,0"
+# === AUDIO DEVICE DETECTION ===
+# Prioritas: MODE_FILE > default ALSA
+AUDIO_DEVICE=""
 if [ -f "$MODE_FILE" ]; then
-    READ_MODE=$(cat "$MODE_FILE")
-    if [[ "$READ_MODE" != "" ]]; then
-        AUDIO_DEVICE="$READ_MODE"
-    fi
-    if [[ "$READ_MODE" == *"plughw"* ]]; then
-        if [[ "$READ_MODE" == *"hdmi"* || "$READ_MODE" == *"2,0"* ]]; then
-             AUDIO_DEVICE="alsa/plughw:2,0"
+    READ_MODE=$(cat "$MODE_FILE" | tr -d '\n')
+    if [ -n "$READ_MODE" ]; then
+        if [[ "$READ_MODE" == *"bluealsa"* ]]; then
+            AUDIO_DEVICE="$READ_MODE"
+        elif [[ "$READ_MODE" == *"plughw"* ]]; then
+            AUDIO_DEVICE="$READ_MODE"
         else
-             AUDIO_DEVICE="alsa/plughw:0,0"
+            AUDIO_DEVICE="$READ_MODE"
         fi
     fi
 fi
 
+# Fallback: deteksi device ALSA yang tersedia
+if [ -z "$AUDIO_DEVICE" ]; then
+    # Coba beberapa device
+    for dev in "alsa/plughw:1,2" "alsa/plughw:0,0" "alsa/plughw:1,0" "alsa/default" "alsa/plughw:2,0"; do
+        if mpv --audio-device=help 2>/dev/null | grep -q "${dev#alsa/}"; then
+            AUDIO_DEVICE="$dev"
+            break
+        fi
+    done
+fi
+
+# Final fallback
+if [ -z "$AUDIO_DEVICE" ]; then
+    AUDIO_DEVICE="alsa/plughw:0,0"
+fi
+
+# === EXTRA ARGS ===
 EXTRA_ARGS=""
 if [[ "$AUDIO_DEVICE" == *"bluealsa"* ]]; then
     EXTRA_ARGS="--ao=alsa --audio-format=s16 --audio-samplerate=44100 --audio-buffer=0.5"
@@ -71,8 +89,15 @@ else
     fi
 fi
 
-# Detek apakah yt-dlp binary tersedia
-YT_DLP_BIN=$(which yt-dlp 2>/dev/null || echo "")
+# === YT-DLP ===
+# Cari yt-dlp di berbagai lokasi
+YT_DLP_BIN=""
+for p in "$(which yt-dlp 2>/dev/null)" "/usr/local/bin/yt-dlp" "$SCRIPT_DIR/bin/yt-dlp" "$(python3 -c 'import yt_dlp; print(yt_dlp.__file__)' 2>/dev/null)"; do
+    if [ -n "$p" ] && [ -f "$p" ]; then
+        YT_DLP_BIN="$p"
+        break
+    fi
+done
 
 if [ -f "$INPUT_LINK" ]; then
     CACHE_OPTS="--cache=yes --demuxer-max-bytes=5M"
@@ -80,13 +105,14 @@ if [ -f "$INPUT_LINK" ]; then
 else
     CACHE_OPTS="--cache=yes --demuxer-max-bytes=20M --demuxer-max-back-bytes=10M"
     if [ -n "$YT_DLP_BIN" ]; then
-        # Priority: pake yt-dlp binary langsung (paling update)
         YTDL_OPTS="--script-opts=ytdl_hooks-ytdl_path=$YT_DLP_BIN --ytdl-format=bestaudio/best --ytdl-raw-options=ignore-errors=,no-check-certificate="
     else
-        # Fallback: pake youtube-dl internal mpv
         YTDL_OPTS="--ytdl-format=bestaudio/best --ytdl-raw-options=ignore-errors=,no-check-certificate="
     fi
 fi
+
+# Simpan AUDIO_DEVICE yang terdeteksi ke file untuk referensi
+echo "$AUDIO_DEVICE" > "$MODE_FILE" 2>/dev/null || true
 
 nohup "$MPV_BIN" "$INPUT_LINK" \
     --start="$START_TIME" \

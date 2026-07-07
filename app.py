@@ -501,7 +501,12 @@ def clear_queue():
 @app.route('/get_files')
 def get_files():
     t = request.args.get('path','/')
-    if t == '/': return jsonify([{'name':'🏠 Internal (/root)','path':'/root','type':'dir'},{'name':'💾 External (/mnt)','path':'/mnt','type':'dir'}])
+    if t == '/': return jsonify([
+        {'name':'🏠 Internal (/root)','path':'/root','type':'dir'},
+        {'name':'💾 External (/mnt)','path':'/mnt','type':'dir'},
+        {'name':'📁 Uploads','path':UPLOAD_DIR,'type':'dir'},
+        {'name':'🎵 Music Library','path':'/root/music','type':'dir'}
+    ])
     items = []
     try:
         ap = os.path.abspath(t)
