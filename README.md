@@ -1,6 +1,6 @@
 # 🎵 OpenWrt-Music-Box: Audiophile-Grade Music Server for OpenWrt
 
-Turn your idle OpenWrt Router or Set-Top Box (STB) into a High-End, Bit-Perfect Music Streamer. 
+Turn your idle OpenWrt Router or Set-Top Box (STB) into a High-End, Bit-Perfect Music Streamer.
 
 OpenWrt-Music-Box is a lightweight, Dockerized music player tailored specifically for OpenWrt environments. It bypasses the standard Linux audio resampling, delivering pure, untouched audio data directly to your USB DAC. Combined with seamless Bluetooth A2DP support and a smart local library manager, it's the ultimate audio engine for your homelab.
 
@@ -8,14 +8,15 @@ OpenWrt-Music-Box is a lightweight, Dockerized music player tailored specificall
 
 ## ✨ Key Features
 
-* 🎧 **Bit-Perfect Audio Output:** Delivers pure, untouched digital audio (e.g., 24-bit/96kHz) directly to your USB DAC (like JadeAudio JA11) without system resampling.
+* 🎧 **Bit-Perfect Audio Output:** Delivers pure, untouched digital audio (e.g., 24-bit/96kHz) directly to your USB DAC without system resampling.
 * 📡 **Bluetooth A2DP Support:** Custom integrated `bluealsa` allows seamless pairing and streaming to your TWS or Bluetooth Speakers right from the Web UI.
-* 🗂️ **Smart Background Scanner:** Asynchronous deep-scanning of your internal/external HDDs (`/mnt`). Automatically extracts ID3 tags (Title, Artist, Album) using `mutagen` and stores them in a lightning-fast SQLite WAL-mode database. Resilient against corrupted files.
-* 🌐 **Responsive Web UI:** Control your playback, manage queues, browse folders, and pair Bluetooth devices from any browser.
+* 🗂️ **Smart Background Scanner:** Asynchronous deep-scanning of your internal/external HDDs (`/mnt`). Automatically extracts ID3 tags using `mutagen` and stores them in a lightning-fast SQLite WAL-mode database.
+* 🌐 **Responsive Web UI:** Control playback, manage queues, browse folders, and pair Bluetooth devices from any browser.
 * ☁️ **YouTube Music & Lyrics API:** Integrated with `ytmusicapi` for cloud streaming and `LRCLIB` for real-time synced lyrics.
-* 🎵 **M3U Playlist Support:** Export/import `.m3u` playlists directly from the Queue tab.
 * 🐳 **Fully Dockerized:** Runs in an isolated, lightweight Debian container, keeping your OpenWrt host perfectly clean.
 * 🎚️ **10-Band Equalizer + Crossfeed:** Built-in parametric EQ with 16 presets and binaural crossfeed for headphones.
+* 🌐 **Browser Play Mode:** Stream audio directly in your browser without server-side playback.
+* 📁 **File Upload:** Upload audio files via the Web UI for instant playback.
 * 📱 **PWA Ready:** Install as a Progressive Web App on your phone for a native-like experience.
 
 ---
@@ -67,7 +68,7 @@ Script akan mendeteksi sistem Anda dan melakukan semuanya secara otomatis:
 | **1/6** | 🔍 Deteksi OS — otomatis (apt, opkg, apk) |
 | **2/6** | 📦 Install/update system dependencies — ffmpeg, bluez, alsa, socat, curl, git (skip yang sudah ada). Jika `mpv` tidak tersedia (OpenWrt), otomatis install Docker sebagai gantinya |
 | **3/6** | 🐍 Setup Python virtual environment `venv/`. Jika `python3-venv` tidak tersedia, fallback ke install system-wide |
-| **4/6** | 📚 Install/update Python packages — Flask, ytmusicapi, mutagen, requests |
+| **4/6** | 📚 Install/update Python packages — Flask, ytmusicapi, yt-dlp, mutagen, requests |
 | **5/6** | ⬇️ Download/update yt-dlp binary terbaru untuk YouTube streaming |
 | **6/6** | ✅ Final setup — permissions, FontAwesome assets, verifikasi komponen, buat `run.sh` |
 
@@ -79,7 +80,7 @@ Script akan mendeteksi sistem Anda dan melakukan semuanya secara otomatis:
 ./run.sh
 
 # Di OpenWrt (tanpa mpv, via Docker):
-OWMB_PORT=2030 docker-compose up -d --build
+OWRTMB_PORT=2030 docker-compose up -d --build
 
 # Atau langsung:
 source venv/bin/activate && python3 app.py
@@ -148,7 +149,7 @@ EOF
 ```bash
 git clone https://github.com/cngreenapple/openwrt-music-box.git
 cd openwrt-music-box
-OWMB_PORT=2030 docker-compose up -d --build
+OWRTMB_PORT=2030 docker-compose up -d --build
 ```
 
 > **Note:** Container mount `/dev/snd` dan `/var/run/dbus` untuk akses audio hardware dan Bluetooth.
@@ -176,10 +177,6 @@ sudo apk add python3 py3-pip mpv ffmpeg bluez alsa-utils curl git socat
 # Install Python packages
 pip3 install -r requirements.txt
 
-# Install yt-dlp untuk YouTube streaming
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-chmod a+rx /usr/local/bin/yt-dlp
-
 # Setup
 chmod +x play.sh toggle_output.sh
 python3 app.py
@@ -193,24 +190,21 @@ OpenWrt-Music-Box can be configured using the following environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OWMB_PORT` | `2030` | Web UI port |
-| `OWMB_HOST` | `0.0.0.0` | Bind address |
-| `OWMB_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
-| `OWMB_DB_PATH` | `./music.db` | Path to SQLite database file |
-| `OWMB_DEFAULT_PATH` | `/root/music` | Default music library path |
+| `OWRTMB_PORT` | `2030` | Web UI port |
+| `OWRTMB_HOST` | `0.0.0.0` | Bind address |
+| `OWRTMB_LOG_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
 
 Example:
 ```bash
-# Run with custom port (default 2030) and debug logging
-OWMB_PORT=8080 OWMB_LOG_LEVEL=DEBUG python3 app.py
+# Run with custom port and debug logging
+OWRTMB_PORT=8080 OWRTMB_LOG_LEVEL=DEBUG python3 app.py
 ```
 
 Or in `docker-compose.yml`:
 ```yaml
 environment:
-  - OWMB_PORT=2030
-  - OWMB_LOG_LEVEL=DEBUG
-  - OWMB_DEFAULT_PATH=/mnt/sda1/Music
+  - OWRTMB_PORT=2030
+  - OWRTMB_LOG_LEVEL=DEBUG
 ```
 
 ---
@@ -247,9 +241,10 @@ rm -rf /tmp/luci-*
 
 ### 🎮 Player Controls
 1. **Play Music:** Search YouTube Music via the search bar, paste a YouTube URL, or browse local files in Media Center.
-2. **Queue Management:** View, reorder (click to jump), shuffle, and clear your queue. Export as `.m3u` or import existing playlists.
-3. **Equalizer:** Drag the 10-band parametric EQ knobs, or select from **16 presets** (Bass, Rock, Pop, Jazz, Vocal, Metal, etc.)
-4. **Balance & Crossfeed:** Adjust left/right balance, mute individual channels, or enable binaural crossfeed for headphones.
+2. **Play Mode:** Choose between **Server mode** (mpv plays audio on the device) or **Browser mode** (audio streams to your browser).
+3. **Queue Management:** View, reorder (click to jump), shuffle, and clear your queue.
+4. **Equalizer:** Drag the 10-band parametric EQ knobs, or select from **16 presets** (Bass, Rock, Pop, Jazz, Vocal, Metal, etc.)
+5. **Balance & Crossfeed:** Adjust left/right balance, mute individual channels, or enable binaural crossfeed for headphones.
 
 ### 🎤 Lyrics
 - Click the microphone icon to fetch real-time synced lyrics from LRCLIB.
@@ -258,6 +253,9 @@ rm -rf /tmp/luci-*
 - **Line Out (Jack):** Default analog output via 3.5mm jack.
 - **HDMI:** Digital audio via HDMI.
 - **Bluetooth:** Scan, pair, and stream to TWS or Bluetooth speakers.
+
+### 📁 File Upload
+- Upload audio files directly from the Media Center tab — supports MP3, FLAC, WAV, M4A, OGG, OPUS, AAC, DSF, DFF.
 
 ### ⏱️ Sleep Timer
 - Set a timer (15min, 30min, 1 hour) to auto-stop playback.
@@ -271,7 +269,7 @@ rm -rf /tmp/luci-*
 
 * **Backend:** Python 3.11+ (Flask 3.x)
 * **Audio Engine:** MPV & BlueALSA
-* **YouTube Streaming:** yt-dlp (binary) + ytmusicapi
+* **YouTube Streaming:** yt-dlp (Python library) + ytmusicapi + mpv built-in ytdl
 * **Database:** SQLite3 (WAL Mode for high concurrency)
 * **Metadata:** Mutagen
 * **Frontend:** Vanilla JS, FontAwesome 6, PWA
@@ -283,7 +281,7 @@ rm -rf /tmp/luci-*
 
 ```
 openwrt-music-box/
-├── app.py                # Main Flask application (31 API routes)
+├── app.py                # Main Flask application (backend logic & API routes)
 ├── library.py            # SQLite library manager (WAL mode)
 ├── bt_manager.py         # Bluetooth manager class
 ├── play.sh               # MPV audio player wrapper
@@ -294,13 +292,12 @@ openwrt-music-box/
 ├── docker-compose.yml    # Docker Compose configuration
 ├── requirements.txt      # Python dependencies
 ├── .gitignore            # Git ignore rules
-├── services/             # Service layer (modular structure)
-├── routes/               # Flask blueprints (modular structure)
 ├── static/
 │   ├── js/script.js      # Frontend application logic
 │   ├── sw.js             # Service Worker (PWA offline cache)
 │   ├── css/              # Stylesheets
 │   ├── img/              # Images & icons
+│   ├── covers/           # Extracted album covers cache
 │   └── webfonts/         # FontAwesome 6 fonts
 └── templates/
     └── index.html        # Single-page web UI
@@ -310,13 +307,13 @@ openwrt-music-box/
 
 ## 🧹 Logging
 
-- **File:** `openwrt_music_box.log` di direktori aplikasi (otomatis dibuat)
+- **File:** `owrt_musicbox.log` di direktori aplikasi (otomatis dibuat)
 - **Stdout:** Juga tampil di terminal / `docker logs`
-- **Level:** Atur via `OWMB_LOG_LEVEL` (DEBUG, INFO, WARNING, ERROR)
+- **Level:** Atur via `OWRTMB_LOG_LEVEL` (DEBUG, INFO, WARNING, ERROR)
 
 Contoh melihat log:
 ```bash
-tail -f openwrt_music_box.log
+tail -f owrt_musicbox.log
 docker logs -f openwrt-music-box
 ```
 
@@ -326,15 +323,14 @@ docker logs -f openwrt-music-box
 
 | Masalah | Solusi |
 |---------|--------|
-| **mpv not found** | Di OpenWrt, mpv tidak tersedia. Gunakan metode Docker: `OWMB_PORT=2030 docker-compose up -d --build` |
+| **mpv not found** | Di OpenWrt, mpv tidak tersedia. Gunakan metode Docker: `OWRTMB_PORT=2030 docker-compose up -d --build` |
 | **sudo: command not found** | OpenWrt tidak punya sudo. Installer sudah otomatis handle ini via `run_cmd()` |
 | **Python venv error** | Jika `python3-venv` tidak bisa diinstall, installer akan fallback ke install system-wide |
-| **YouTube playback error** | Pastikan `yt-dlp` terinstall: `which yt-dlp`. Jika tidak, jalankan ulang installer |
+| **YouTube playback error** | Pastikan package `yt-dlp` terinstall di Python: `pip3 list \| grep yt-dlp`. Jika tidak, jalankan `pip3 install yt-dlp` |
 | **Bluetooth not working** | Pastikan D-Bus policy sudah dibuat (lihat Step 2 Docker) |
 | **No audio** | Periksa output device di Web UI (Jack/HDMI/Bluetooth). Pastikan USB DAC terdeteksi |
-| **Docker build gagal: DNS resolution error** | Masalah umum di OpenWrt. Build container tidak bisa resolve `deb.debian.org`. Solusi: (1) Pastikan file `docker-compose.yml` sudah punya `network: host` di bagian build — lihat file tersebut. (2) Coba set DNS host: `echo "nameserver 8.8.8.8" > /etc/resolv.conf && /etc/init.d/dockerd restart`. (3) Atau gunakan perintah build manual: `cd /openwrt-music-box && docker build --network host -t openwrt-music-box . && OWMB_PORT=2030 docker-compose up -d` |
+| **Docker build gagal: DNS resolution error** | Masalah umum di OpenWrt. Build container tidak bisa resolve `deb.debian.org`. Solusi: (1) Pastikan file `docker-compose.yml` sudah punya `network: host` di bagian build. (2) Coba set DNS host: `echo "nameserver 8.8.8.8" > /etc/resolv.conf && /etc/init.d/dockerd restart`. (3) Atau gunakan perintah build manual: `cd /openwrt-music-box && docker build --network host -t openwrt-music-box . && OWRTMB_PORT=2030 docker-compose up -d` |
 | **Docker build lambat / timeout** | Build pertama perlu download base image Python + Debian (~300MB). Pastikan koneksi internet stabil. Bisa memakan waktu 5-15 menit tergantung kecepatan internet. |
-| **`run.sh` tidak ditemukan** | Installer membuat `run.sh` di awal. Jika hilang, buat manual: `echo 'python3 app.py' > run.sh && chmod +x run.sh` |
 | **install.sh berhenti di tengah** | Koneksi internet terputus saat download. Jalankan ulang: `./install.sh` — komponen yang sudah berhasil akan di-skip |
 | **Docker compose warning: "buildx isn't installed"** | Warning tidak berbahaya. Build tetap jalan. Untuk menghilangkannya, install buildx: `opkg install docker-buildx` |
 
