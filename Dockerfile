@@ -30,14 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     psmisc \
     bash \
     socat \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    # yt-dlp: install Python library via pip (most reliable)
-    && pip install --no-cache-dir yt-dlp \
-    # Also download binary as fallback
-    && { curl -sL --connect-timeout 10 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp 2>/dev/null \
-         && chmod a+rx /usr/local/bin/yt-dlp \
-         || true; }
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

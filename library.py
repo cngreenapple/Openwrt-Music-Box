@@ -70,13 +70,16 @@ class LibraryManager:
             try:
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
+
                 file_list = []
                 for root, dirs, files in os.walk(root_path):
                     for f in files:
                         if f.lower().endswith(AUDIO_EXTS):
                             file_list.append(os.path.join(root, f))
+
                 self.total_files = len(file_list)
                 self.scanned_files = 0
+
                 for filepath in file_list:
                     try:
                         c.execute("SELECT id FROM tracks WHERE path = ?", (filepath,))
@@ -90,11 +93,15 @@ class LibraryManager:
                             conn.commit()
                     except Exception as e:
                         logger.error(f"Error scan file {filepath}: {e}")
+
                     self.scanned_files += 1
+
                 conn.close()
                 self.status_msg = f"Completed. {self.total_files} Tracks."
+
             except Exception as e:
                 self.status_msg = f"Error: {e}"
+
             finally:
                 self.scanning = False
 
