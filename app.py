@@ -428,8 +428,8 @@ def status():
 @app.route('/get_lyrics')
 def get_lyrics():
     with state_lock:
-        artist = st4_state.get("artist", "")
-        title = st4_state.get("title", "")
+        artist = request.args.get('artist') or st4_state.get("artist", "")
+        title = request.args.get('title') or st4_state.get("title", "")
     
     if not title: return jsonify({"error": "No track info"})
 

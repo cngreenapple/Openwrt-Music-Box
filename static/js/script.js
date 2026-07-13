@@ -478,11 +478,16 @@ function toggleTheme() { document.body.classList.toggle('light'); localStorage.s
 // ====== LYRICS ======
 function toggleLyrics() { tg('lym'); setTimeout(() => { if(document.getElementById('lym').classList.contains('active')) fetchLyrics(); }, 100); }
 function fetchLyrics() {
-    const c = document.getElementById('lyrics-container'); const t = document.getElementById('tit').innerText;
+    const c = document.getElementById('lyrics-container'); 
+    const title = document.getElementById('tit').innerText;
+    const artist = document.getElementById('art').innerText;
     c.innerHTML = '<div style="margin-top:20px;color:#888;">Searching...</div>';
-    if(t === 'Ready') { c.innerHTML = '<div style="margin-top:50px;color:#666;">Play music</div>'; return; }
-    fetch(api('/get_lyrics')).then(r => r.json()).then(d => {
-        lastLyricsTitle = t; lyricsData = [];
+    if(title === 'Ready' && artist === 'Waiting...') { 
+        c.innerHTML = '<div style="margin-top:50px;color:#666;">Play music</div>'; return; 
+    }
+    // Pass title and artist from DOM to backend for browser mode where state is not updated
+    fetch(api('/get_lyrics?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist))).then(r => r.json()).then(d => {
+        lastLyricsTitle = title; lyricsData = [];
         if(d.error) { c.innerHTML = '<div style="margin-top:50px;color:#888;">Not found</div>'; return; }
         lyricsType = d.type;
         if(d.type === 'synced') { parseLRC(d.lyrics); renderLyrics(); syncLyrics(globalTime); }
