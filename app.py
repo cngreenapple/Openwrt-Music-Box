@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, abort, redirect
+from flask import Flask, render_template, request, jsonify, send_file, Response, abort, redirect, stream_with_context
 import uuid
 import subprocess
 import json
@@ -47,10 +47,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 AUDIO_EXTS = ('.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus', '.wma', '.aac', '.dsf', '.dff')
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# === YouTube Download Cache for Browser Mode ===
-YOUTUBE_DOWNLOAD_DIR = os.path.join(BASE_DIR, "ytcache")
-os.makedirs(YOUTUBE_DOWNLOAD_DIR, exist_ok=True)
 
 state_lock = Lock()
 yt_music = YTMusic()
@@ -187,11 +183,7 @@ def play_next_in_queue():
         if next_idx < len(app_state["queue"]):
             app_state["current_index"] = next_idx
             next_song = app_state["queue"][next_idx]
-            if app_state["play_mode"] == "browser" and os.path.exists(next_song['link']):
-                app_state["status"] = "playing"
-                app_state["title"] = next_song['title']
-            else:
-                threading.Thread(target=trigger_play, args=(next_song['link'],)).start()
+            threading.Thread(target=trigger_play, args=(next_song['link'],)).start()
         else:
             app_state["status"] = "stopped"
 
@@ -628,20 +620,12 @@ def play():
                 app_state["queue"] = [song_obj]; app_state["current_index"] = 0
 
             app_state["error_count"] = 0
-            if app_state["play_mode"] == "browser" and os.path.exists(url):
-                app_state["status"] = "playing"
-                app_state["title"] = title
-            else:
-                threading.Thread(target=trigger_play, args=(url,)).start()
+            threading.Thread(target=trigger_play, args=(url,)).start()
         elif mode == 'enqueue':
             app_state["queue"].append(song_obj)
             if app_state["status"] == "stopped" and len(app_state["queue"]) == 1:
                 app_state["current_index"] = 0
-                if app_state["play_mode"] == "browser" and os.path.exists(url):
-                    app_state["status"] = "playing"
-                    app_state["title"] = title
-                else:
-                    threading.Thread(target=trigger_play, args=(url,)).start()
+                threading.Thread(target=trigger_play, args=(url,)).start()
     return jsonify({"status": "ok", "mode": mode, "queue_len": len(app_state["queue"])})
 
 @app.route('/play/mode')
@@ -1007,108 +991,105 @@ def import_m3u():
         return jsonify({"status": "error", "info": str(e)}), 500
 
 # ========================
-# BROWSER MODE: YouTube download-then-play
+# YOUTUBE STREAM PROXY (no download)
 # ========================
 
-@app.route('/youtube_download')
-def youtube_download():
-    """
-    Download YouTube audio to local cache, then return the local file path.
-    This ensures stable playback in browser mode.
-    """
+@app.route('/youtube_proxy')
+def youtube_proxy():
+    """Stream YouTube audio directly using yt-dlp without downloading to disk."""
     url = request.args.get('url', '')
-    if not url: return jsonify({"error": "no url"}), 400
+    if not url:
+        return jsonify({"error": "no url"}), 400
 
     try:
         import yt_dlp
 
-        # Extract video ID for caching
-        video_id = None
-        match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-        if match:
-            video_id = match.group(1)
-
-        if not video_id:
-            return jsonify({"error": "invalid YouTube URL"}), 400
-
-        # Check if already cached
-        cached_file = None
-        if os.path.exists(YOUTUBE_DOWNLOAD_DIR):
-            for f in os.listdir(YOUTUBE_DOWNLOAD_DIR):
-                if f.startswith(video_id) and f.endswith(AUDIO_EXTS):
-                    cached_file = os.path.join(YOUTUBE_DOWNLOAD_DIR, f)
-                    break
-
-        if cached_file and os.path.exists(cached_file):
-            logger.info(f"Using cached: {cached_file}")
-            file_size = os.path.getsize(cached_file)
-            # Get title from metadata
-            title = "Downloaded Track"
-            try:
-                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    title = info.get('title', 'Downloaded Track')
-            except:
-                pass
-            return jsonify({
-                'status': 'ok',
-                'path': cached_file,
-                'title': title,
-                'cached': True,
-                'thumbnail': get_yt_thumb(url),
-                'size': file_size
-            })
-
-        # Download the audio
-        logger.info(f"Downloading YouTube audio: {url}")
-        output_template = os.path.join(YOUTUBE_DOWNLOAD_DIR, f"{video_id}.%(ext)s")
-
+        # Get the direct audio URL using yt-dlp
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': output_template,
             'quiet': True,
             'no_warnings': True,
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
+            'youtube_include_dash_manifest': False,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'Downloaded Track')
+            info = ydl.extract_info(url, download=False)
+            direct_url = info.get('url', '')
+            title = info.get('title', 'Unknown')
+            thumbnail = info.get('thumbnail', '')
 
-        # Find the downloaded file
-        downloaded_file = None
-        if os.path.exists(YOUTUBE_DOWNLOAD_DIR):
-            for f in os.listdir(YOUTUBE_DOWNLOAD_DIR):
-                if f.startswith(video_id) and f.endswith(('.mp3', '.m4a', '.webm', '.opus')):
-                    downloaded_file = os.path.join(YOUTUBE_DOWNLOAD_DIR, f)
-                    break
+        if not direct_url:
+            return jsonify({"error": "could not extract audio URL"}), 500
 
-        if downloaded_file and os.path.exists(downloaded_file):
-            file_size = os.path.getsize(downloaded_file)
-            logger.info(f"Downloaded OK: {downloaded_file} ({file_size} bytes)")
-            # Update queue link to local file
-            with state_lock:
-                if app_state["queue"] and app_state["current_index"] < len(app_state["queue"]):
-                    current = app_state["queue"][app_state["current_index"]]
-                    if current['link'] == url:
-                        current['link'] = downloaded_file
-            return jsonify({
-                'status': 'ok',
-                'path': downloaded_file,
-                'title': title,
-                'cached': False,
-                'thumbnail': get_yt_thumb(url),
-                'size': file_size
-            })
-        else:
-            return jsonify({"error": "Download failed - file not found"}), 500
+        logger.info(f"Streaming YouTube: {title}")
+
+        # Stream the audio directly with proper headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Range': request.headers.get('Range', 'bytes=0-')
+        }
+
+        resp = requests.get(direct_url, headers=headers, stream=True, timeout=30)
+
+        # Forward the response as a streaming response
+        def generate():
+            for chunk in resp.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        response = Response(
+            stream_with_context(generate()),
+            status=resp.status_code,
+            content_type=resp.headers.get('Content-Type', 'audio/webm')
+        )
+
+        # Forward range headers for seeking support
+        if 'Content-Range' in resp.headers:
+            response.headers['Content-Range'] = resp.headers['Content-Range']
+        if 'Content-Length' in resp.headers:
+            response.headers['Content-Length'] = resp.headers['Content-Length']
+        if 'Accept-Ranges' in resp.headers:
+            response.headers['Accept-Ranges'] = resp.headers['Accept-Ranges']
+
+        return response
 
     except Exception as e:
-        logger.error(f"youtube_download error: {e}")
+        logger.error(f"youtube_proxy error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ========================
+# RADIO STREAM PROXY
+# ========================
+
+@app.route('/radio_proxy')
+def radio_proxy():
+    """Proxy radio streams to avoid CORS issues in browser mode."""
+    url = request.args.get('url', '')
+    if not url:
+        return jsonify({"error": "no url"}), 400
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*'
+        }
+        resp = requests.get(url, headers=headers, stream=True, timeout=30)
+
+        def generate():
+            for chunk in resp.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        response = Response(
+            stream_with_context(generate()),
+            status=resp.status_code,
+            content_type=resp.headers.get('Content-Type', 'audio/mpeg')
+        )
+        return response
+
+    except Exception as e:
+        logger.error(f"radio_proxy error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

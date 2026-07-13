@@ -266,24 +266,14 @@ function playSong(url, mode = 'play_now', title = '') {
             document.body.classList.add('playing'); showToast('▶ ' + (title || 'Track'));
             if(systemState.playMode === 'browser') {
                 if(url.includes('youtube') || url.includes('youtu.be')) {
-                    // Download audio first, then play from local cache
-                    showToast('⏬ Downloading...');
-                    fetch('/youtube_download?url=' + encodeURIComponent(url)).then(r => r.json()).then(yt => {
-                        if(yt.status === 'ok' && yt.path) {
-                            setText('tit', yt.title || title);
-                            if(yt.thumbnail) document.getElementById('cover-img').src = yt.thumbnail;
-                            showToast(yt.cached ? '✅ From cache' : '✅ Downloaded');
-                            if(browserAudio) {
-                                browserAudio.src = '/stream?path=' + encodeURIComponent(yt.path);
-                                browserAudio.volume = (settings.vol || 50) / 100;
-                                browserAudio.play().catch(() => {}); isPlaying = true; updatePlayBtn();
-                                // Update queue link to local file
-                                fetch('/play?url=' + encodeURIComponent(yt.path) + '&mode=play_now&title=' + encodeURIComponent(yt.title));
-                            }
-                        } else {
-                            showToast('❌ Download failed');
-                        }
-                    }).catch(() => { showToast('❌ Download error'); });
+                    // Stream YouTube directly via proxy (no download)
+                    showToast('▶ Streaming YouTube...');
+                    if(browserAudio) {
+                        setText('tit', title || 'YouTube');
+                        browserAudio.src = '/youtube_proxy?url=' + encodeURIComponent(url);
+                        browserAudio.volume = (settings.vol || 50) / 100;
+                        browserAudio.play().catch(() => {}); isPlaying = true; updatePlayBtn();
+                    }
                 } else { setTimeout(() => fetch('/play/current').then(r => r.json()).then(p => { if(p.link) playBrowserTrack(p.link, p.title); }), 300); }
             } else { isPlaying = true; updatePlayBtn(); }
         } else showToast('+ Queue (' + d.queue_len + ')');
