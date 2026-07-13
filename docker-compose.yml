@@ -5,15 +5,18 @@ services:
       network: host
     container_name: owrt-musicbox
     restart: unless-stopped
-    network_mode: host
+    network_mode: "host"
+    privileged: true
     dns:
       - 8.8.8.8
       - 1.1.1.1
     volumes:
+      - .:/app
       - /dev/snd:/dev/snd
       - /var/run/dbus:/var/run/dbus
+      - /tmp:/tmp
+      - /root:/root
       - /mnt:/mnt:ro
-      - ./data:/app/data
     environment:
       - OWRTMB_PORT=${OWRTMB_PORT:-2030}
       - OWRTMB_HOST=${OWRTMB_HOST:-0.0.0.0}

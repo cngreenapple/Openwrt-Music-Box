@@ -48,6 +48,10 @@ AUDIO_EXTS = ('.mp3', '.flac', '.wav', '.m4a', '.ogg', '.opus', '.wma', '.aac', 
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# === YouTube Download Cache for Browser Mode ===
+YOUTUBE_DOWNLOAD_DIR = os.path.join(BASE_DIR, "ytcache")
+os.makedirs(YOUTUBE_DOWNLOAD_DIR, exist_ok=True)
+
 state_lock = Lock()
 yt_music = YTMusic()
 needs_restore = False
@@ -991,9 +995,7 @@ def import_m3u():
                 line = line.strip()
                 if not line or line.startswith('#') or line.startswith('['):
                     continue
-                # Check if it looks like a URL or file path
                 if line.startswith('http') or os.path.exists(line):
-                    # Try to extract title from previous EXTINF line
                     title = "Unknown"
                     app_state["queue"].append({'link': line, 'title': title})
                     imported += 1
@@ -1005,90 +1007,109 @@ def import_m3u():
         return jsonify({"status": "error", "info": str(e)}), 500
 
 # ========================
-# BROWSER MODE: YouTube audio extraction & proxy
+# BROWSER MODE: YouTube download-then-play
 # ========================
 
-@app.route('/youtube_audio')
-def youtube_audio():
-    """Resolve a YouTube URL to its audio stream URL via yt-dlp."""
+@app.route('/youtube_download')
+def youtube_download():
+    """
+    Download YouTube audio to local cache, then return the local file path.
+    This ensures stable playback in browser mode.
+    """
     url = request.args.get('url', '')
     if not url: return jsonify({"error": "no url"}), 400
+
     try:
         import yt_dlp
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info.get('url', '')
-            title = info.get('title', 'Unknown')
-            thumbnail = info.get('thumbnail', '')
+
+        # Extract video ID for caching
+        video_id = None
+        match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
+        if match:
+            video_id = match.group(1)
+
+        if not video_id:
+            return jsonify({"error": "invalid YouTube URL"}), 400
+
+        # Check if already cached
+        cached_file = None
+        if os.path.exists(YOUTUBE_DOWNLOAD_DIR):
+            for f in os.listdir(YOUTUBE_DOWNLOAD_DIR):
+                if f.startswith(video_id) and f.endswith(AUDIO_EXTS):
+                    cached_file = os.path.join(YOUTUBE_DOWNLOAD_DIR, f)
+                    break
+
+        if cached_file and os.path.exists(cached_file):
+            logger.info(f"Using cached: {cached_file}")
+            file_size = os.path.getsize(cached_file)
+            # Get title from metadata
+            title = "Downloaded Track"
+            try:
+                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get('title', 'Downloaded Track')
+            except:
+                pass
             return jsonify({
-                'audio_url': audio_url,
+                'status': 'ok',
+                'path': cached_file,
                 'title': title,
-                'thumbnail': thumbnail
+                'cached': True,
+                'thumbnail': get_yt_thumb(url),
+                'size': file_size
             })
-    except Exception as e:
-        logger.error(f"youtube_audio error: {e}")
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/youtube_proxy')
-def youtube_proxy():
-    """Proxy YouTube audio stream to avoid CORS issues in browser."""
-    url = request.args.get('url', '')
-    if not url: return abort(404)
-    try:
-        import yt_dlp
+        # Download the audio
+        logger.info(f"Downloading YouTube audio: {url}")
+        output_template = os.path.join(YOUTUBE_DOWNLOAD_DIR, f"{video_id}.%(ext)s")
+
         ydl_opts = {
             'format': 'bestaudio/best',
+            'outtmpl': output_template,
             'quiet': True,
             'no_warnings': True,
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info.get('url', '')
-            if not audio_url:
-                return abort(404)
-            # Redirect to the actual audio stream URL
-            return redirect(audio_url)
-    except Exception as e:
-        logger.error(f"youtube_proxy error: {e}")
-        # Fallback: try direct streaming
-        try:
-            import yt_dlp
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                audio_url = info.get('url', '')
-                if audio_url:
-                    # Stream directly through Flask
-                    resp = requests.get(audio_url, stream=True)
-                    return Response(resp.iter_content(chunk_size=8192), 
-                                    content_type=resp.headers.get('content-type', 'audio/webm'),
-                                    status=resp.status_code)
-        except Exception as e2:
-            logger.error(f"youtube_proxy fallback error: {e2}")
-        return abort(500)
 
-@app.route('/radio_proxy')
-def radio_proxy():
-    """Proxy radio streams to avoid CORS issues in browser."""
-    url = request.args.get('url', '')
-    if not url: return abort(404)
-    try:
-        resp = requests.get(url, stream=True, timeout=10)
-        return Response(resp.iter_content(chunk_size=8192),
-                        content_type=resp.headers.get('content-type', 'audio/mpeg'),
-                        status=resp.status_code)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'Downloaded Track')
+
+        # Find the downloaded file
+        downloaded_file = None
+        if os.path.exists(YOUTUBE_DOWNLOAD_DIR):
+            for f in os.listdir(YOUTUBE_DOWNLOAD_DIR):
+                if f.startswith(video_id) and f.endswith(('.mp3', '.m4a', '.webm', '.opus')):
+                    downloaded_file = os.path.join(YOUTUBE_DOWNLOAD_DIR, f)
+                    break
+
+        if downloaded_file and os.path.exists(downloaded_file):
+            file_size = os.path.getsize(downloaded_file)
+            logger.info(f"Downloaded OK: {downloaded_file} ({file_size} bytes)")
+            # Update queue link to local file
+            with state_lock:
+                if app_state["queue"] and app_state["current_index"] < len(app_state["queue"]):
+                    current = app_state["queue"][app_state["current_index"]]
+                    if current['link'] == url:
+                        current['link'] = downloaded_file
+            return jsonify({
+                'status': 'ok',
+                'path': downloaded_file,
+                'title': title,
+                'cached': False,
+                'thumbnail': get_yt_thumb(url),
+                'size': file_size
+            })
+        else:
+            return jsonify({"error": "Download failed - file not found"}), 500
+
     except Exception as e:
-        logger.error(f"radio_proxy error: {e}")
-        return abort(502)
+        logger.error(f"youtube_download error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     import subprocess

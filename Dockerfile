@@ -1,27 +1,13 @@
-# ========== STAGE 1: Builder ==========
-FROM python:3.11-slim-bookworm AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3-dev \
-    libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# ========== STAGE 2: Runtime ==========
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.11-slim-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
     OWRTMB_PORT=2030 \
     OWRTMB_HOST=0.0.0.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
+    libffi-dev \
     mpv \
     ffmpeg \
     bluez \
@@ -34,13 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /install /usr/local
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN chmod +x *.sh
-
-# Buat folder uploads
-RUN mkdir -p /app/uploads
+RUN chmod +x *.sh && mkdir -p /app/uploads
 
 EXPOSE ${OWRTMB_PORT}
 
