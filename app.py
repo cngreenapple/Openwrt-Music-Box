@@ -890,6 +890,15 @@ def search_db():
 # BROWSER MODE ENDPOINTS (same server, different logic - no mpv)
 # ========================
 
+@app.route('/play/current')
+def play_current():
+    with state_lock:
+        idx = st4_state["current_index"]
+        if 0 <= idx < len(st4_state["queue"]):
+            s = st4_state["queue"][idx]
+            return jsonify({"index": idx, "title": s['title'], "link": s['link'], "thumb": st4_state.get("thumb", "")})
+        return jsonify({"index": -1})
+
 @app.route('/browser_play', methods=['GET', 'POST'])
 def browser_play():
     """Browser mode: update queue ONLY, no mpv."""
@@ -994,6 +1003,28 @@ def radio_proxy():
         return Response(stream_with_context(generate()), status=resp.status_code, content_type=resp.headers.get('Content-Type', 'audio/mpeg'))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/stream')
+def stream_file():
+    """Stream local file with HTTP Range support."""
+    path = request.args.get('path', '')
+    if not path or not os.path.exists(path): abort(404)
+    range_header = request.headers.get('Range', None)
+    file_size = os.path.getsize(path)
+    ext = os.path.splitext(path)[1].lower()
+    mime_map = {'.mp3':'audio/mpeg','.flac':'audio/flac','.wav':'audio/wav','.m4a':'audio/mp4','.ogg':'audio/ogg','.opus':'audio/ogg','.wma':'audio/x-ms-wma','.aac':'audio/aac'}
+    mime = mime_map.get(ext, 'audio/mpeg')
+    if range_header:
+        m = re.search(r'(\d+)-(\d*)', range_header)
+        if m:
+            byte1 = int(m.group(1)); byte2 = int(m.group(2)) if m.group(2) else file_size-1
+            length = byte2 - byte1 + 1
+            with open(path, 'rb') as f: f.seek(byte1); data = f.read(length)
+            resp = Response(data, 206, mimetype=mime, content_type=mime, direct_passthrough=True)
+            resp.headers.add('Content-Range', f'bytes {byte1}-{byte2}/{file_size}')
+            resp.headers.add('Accept-Ranges', 'bytes'); resp.headers.add('Content-Length', str(length))
+            return resp
+    return send_file(path, mimetype=mime)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
