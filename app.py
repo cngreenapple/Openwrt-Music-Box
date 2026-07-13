@@ -908,6 +908,15 @@ def browser_play():
     if not url: return jsonify({"error": "no url"})
     song_obj = {'link': url, 'title': title}
 
+    # Save title/artist to state for lyrics lookup
+    if " - " in title:
+        parts = title.split(" - ", 1)
+        st4_state["artist"] = parts[0].strip()
+        st4_state["title"] = parts[1].strip()
+    else:
+        st4_state["title"] = title
+        st4_state["artist"] = "Playing"
+
     if mode == 'play_now':
         if os.path.exists(url) and os.path.isfile(url):
             folder_path = os.path.dirname(url)

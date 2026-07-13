@@ -535,21 +535,52 @@ function toggleTheme() { document.body.classList.toggle('light'); localStorage.s
 // ====== LYRICS ======
 function toggleLyrics() { tg('lym'); setTimeout(() => { if(document.getElementById('lym').classList.contains('active')) fetchLyrics(); }, 100); }
 function fetchLyrics() {
-    const c = document.getElementById('lyrics-container'); 
+    const cont = document.getElementById('lyrics-container');
     const title = document.getElementById('tit').innerText;
-    const artist = document.getElementById('art').innerText;
-    c.innerHTML = '<div style="margin-top:20px;color:#888;">Searching...</div>';
-    if(title === 'Ready' && artist === 'Waiting...') { 
-        c.innerHTML = '<div style="margin-top:50px;color:#666;">Play music</div>'; return; 
+    
+    cont.innerHTML = `
+        <div style="margin-top:20px;">
+            <i class="fa-solid fa-compact-disc fa-spin" style="font-size:2rem; color:var(--accent);"></i>
+            <p style="margin-top:15px; color:#ccc;">Searching for:<br>
+            <span style="color:#fff; font-weight:bold;">${title}</span></p>
+        </div>`;
+    
+    if (title === "Ready" || title === "OwrtBox Player") {
+        cont.innerHTML = '<div style="margin-top:50px;">Play music to see lyrics</div>';
+        return;
     }
-    // Pass title and artist from DOM to backend for browser mode where state is not updated
-    fetch(api('/get_lyrics?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist))).then(r => r.json()).then(d => {
-        lastLyricsTitle = title; lyricsData = [];
-        if(d.error) { c.innerHTML = '<div style="margin-top:50px;color:#888;">Not found</div>'; return; }
-        lyricsType = d.type;
-        if(d.type === 'synced') { parseLRC(d.lyrics); renderLyrics(); syncLyrics(globalTime); }
-        else { const div = document.createElement('div'); div.style.cssText = 'white-space:pre-wrap;line-height:1.8;color:#eee;font-size:0.95rem;padding:20px 10px 100px;'; div.innerText = d.lyrics; c.innerHTML = ''; c.appendChild(div); }
-    }).catch(() => { c.innerHTML = '<div style="margin-top:50px;color:red;">Error</div>'; });
+
+    fetch('/get_lyrics')
+        .then(r => r.json())
+        .then(d => {
+            lastLyricsTitle = title;
+            lyricsData = [];
+            
+            if (d.error) {
+                cont.innerHTML = `
+                    <div style="margin-top:50px; color:#888;">
+                        Lyrics not found.<br>
+                        <button onclick="fetchLyrics()" class="preset-btn" style="margin-top:20px; background:rgba(255,255,255,0.1);">Retry</button>
+                    </div>`;
+                return;
+            }
+
+            lyricsType = d.type;
+            if (d.type === 'synced') {
+                parseLRC(d.lyrics);
+                renderLyrics();
+                syncLyrics(globalTime);
+            } else {
+                cont.innerHTML = '';
+                const safeDiv = document.createElement('div');
+                safeDiv.style.cssText = "white-space: pre-wrap; line-height: 1.8; color:#eee; font-size:1.1rem; padding: 20px 10px 100px;";
+                safeDiv.innerText = d.lyrics;
+                cont.appendChild(safeDiv);
+            }
+        })
+        .catch(() => {
+            cont.innerHTML = '<div style="margin-top:50px; color:red;">Connection Error</div>';
+        });
 }
 function parseLRC(t) { lyricsData = []; t.split('\n').forEach(line => { const m = line.match(/^\[(\d{2}):(\d{2}\.\d{2})\](.*)/); if(m) { const text = m[3].trim(); if(text) lyricsData.push({ time: parseInt(m[1]) * 60 + parseFloat(m[2]), text }); } }); }
 function renderLyrics() { const c = document.getElementById('lyrics-container'); c.innerHTML = ''; currentLyricIndex = -1; lyricsData.forEach((l, i) => { const d = document.createElement('div'); d.className = 'lyric-line'; d.id = 'line-' + i; d.innerText = l.text; d.onclick = () => { globalTime = l.time; }; c.appendChild(d); }); }
