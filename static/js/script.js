@@ -589,6 +589,73 @@ async function loadLibraryDB() {
 function filterLibraryLocal(q) { const ql = q.toLowerCase(); document.querySelectorAll('#lib-list .lib-item').forEach(r => { r.style.display = (r.dataset.meta || '').includes(ql) ? 'flex' : 'none'; }); }
 
 // ====== MINI QUEUE ======
+// ====== PLAYLIST POPUP (Dashboard) ======
+function togglePlaylistPopup() {
+    const popup = document.getElementById('pl-popup');
+    if (!popup) return;
+    if (popup.classList.contains('active')) {
+        popup.classList.remove('active');
+        popup.style.display = 'none';
+    } else {
+        popup.style.display = 'flex';
+        void popup.offsetWidth;
+        popup.classList.add('active');
+        initPlaylistPopup();
+    }
+}
+
+function initPlaylistPopup() {
+    const container = document.getElementById('playlist-popup-content');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:#888;"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+    fetch('/queue/list').then(r => r.json()).then(d => {
+        container.innerHTML = '';
+        if (!d.queue.length) {
+            container.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">Queue is empty</div>';
+            return;
+        }
+        d.queue.forEach((item, i) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;';
+            if (i === d.current_index) row.style.background = 'rgba(0,255,0,0.08)';
+            
+            const num = document.createElement('span');
+            num.style.cssText = 'color:#666;font-size:0.65rem;min-width:20px;font-family:monospace;';
+            num.textContent = (i + 1) + '.';
+            
+            const info = document.createElement('div');
+            info.style.cssText = 'flex:1;overflow:hidden;';
+            
+            const title = document.createElement('div');
+            title.style.cssText = 'font-size:0.7rem;color:' + (i === d.current_index ? 'var(--accent)' : '#eee') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+            title.textContent = item.title;
+            
+            info.appendChild(title);
+            row.appendChild(num);
+            row.appendChild(info);
+            
+            row.onclick = () => {
+                if (systemState.playMode === 'browser') {
+                    fetch('/control/jump?index=' + i).then(() => {
+                        setTimeout(() => {
+                            fetch('/play/current').then(r => r.json()).then(p => {
+                                if (p.link) playBrowserTrack(p.link, p.title);
+                            });
+                        }, 200);
+                        showToast('Jump: ' + item.title);
+                    });
+                } else {
+                    fetch('/control/jump?index=' + i).then(() => showToast('Jump: ' + item.title));
+                }
+                togglePlaylistPopup();
+            };
+            container.appendChild(row);
+        });
+    }).catch(() => {
+        container.innerHTML = '<div style="text-align:center;color:red;">Error loading queue</div>';
+    });
+}
+
 function updateMiniQueue() {
     const mq = document.getElementById('mini-queue'); const mql = document.getElementById('mini-queue-list');
     if(!mq || !mql) return;

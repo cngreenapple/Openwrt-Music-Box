@@ -155,6 +155,13 @@ def extract_local_cover(filepath):
 
 def trigger_play(url):
     global needs_restore
+    # In browser mode, don't start mpv - frontend handles playback via HTML5/WebAudio
+    with state_lock:
+        if app_state.get("play_mode") == "browser":
+            app_state["last_play_time"] = time.time()
+            app_state["status"] = "playing"
+            app_state["manual_stop"] = False
+            return
     if os.path.exists(PLAY_SCRIPT):
         with state_lock:
             app_state["last_play_time"] = time.time()
@@ -235,6 +242,13 @@ def metadata_worker():
                     app_state["queue"] = []
                     app_state["current_index"] = -1
                     threading.Thread(target=mpv_send, args=(["stop"],)).start()
+
+            # In browser mode, skip all mpv metadata polling
+            with state_lock:
+                is_browser = app_state.get("play_mode") == "browser"
+            if is_browser:
+                time.sleep(1)
+                continue
 
             mpv_ready = False
             try:

@@ -29,6 +29,7 @@
                 <span id="mode-device" class="active"><i class="fa-solid fa-server"></i></span>
                 <span id="mode-browser"><i class="fa-solid fa-desktop"></i></span>
             </div>
+            <button class="btn-ico" onclick="togglePlaylistPopup()" id="btn-playlist" title="Playlist"><i class="fa-solid fa-list-music"></i></button>
             <button class="btn-ico" onclick="tg('om')" id="btn-output"><i class="fa-solid fa-headphones"></i></button>
             <button class="btn-ico" onclick="toggleQuickMenu()" id="btn-menu"><i class="fa-solid fa-ellipsis-vertical"></i></button>
         </div>
@@ -219,6 +220,14 @@
     <div class="popup-box">
         <div class="overlay-hdr"><span>EQ Presets</span><button onclick="tg('pr-om')" class="close-btn">&times;</button></div>
         <div id="preset-container" class="preset-grid"></div>
+    </div>
+</div>
+
+<!-- Playlist Popup -->
+<div id="pl-popup" class="popup">
+    <div class="popup-box">
+        <div class="overlay-hdr"><span>Playlist Queue</span><button onclick="togglePlaylistPopup()" class="close-btn">&times;</button></div>
+        <div id="playlist-popup-content" class="scroll-list" style="max-height:50vh;"></div>
     </div>
 </div>
 
