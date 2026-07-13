@@ -281,18 +281,34 @@ function nextBrowserTrack() {
 // ====== PLAY ======
 function togglePlay() {
     if(systemState.playMode === 'browser') {
-        if(isPlaying) { browserAudio.pause(); isPlaying = false; updatePlayBtn(); }
-        else {
-            fetch('/play/current').then(r => r.json()).then(d => {
-                if(d.index >= 0 && d.link) {
-                    const src = d.link.includes('youtube') || d.link.includes('youtu.be')
-                        ? '/youtube_proxy?url=' + encodeURIComponent(d.link)
-                        : '/stream?path=' + encodeURIComponent(d.link);
-                    playBrowserAudio(src, d.title);
-                }
-            });
+        if(isPlaying) { 
+            browserAudio.pause(); isPlaying = false; updatePlayBtn();
+            document.body.classList.remove('playing');
         }
-        document.body.classList.toggle('playing', isPlaying);
+        else {
+            // Just resume playback without changing src
+            if (browserAudio && browserAudio.src && browserAudio.src !== '') {
+                const promise = browserAudio.play();
+                if (promise) promise.catch((e) => {
+                    if (e.name === 'NotAllowedError') {
+                        showToast('Tap to play');
+                        document.addEventListener('click', () => { browserAudio.play().catch(() => {}); }, { once: true });
+                    }
+                });
+                isPlaying = true; updatePlayBtn();
+                document.body.classList.add('playing');
+            } else {
+                // No source loaded, get from backend
+                fetch('/play/current').then(r => r.json()).then(d => {
+                    if(d.index >= 0 && d.link) {
+                        const src = d.link.includes('youtube') || d.link.includes('youtu.be')
+                            ? '/youtube_proxy?url=' + encodeURIComponent(d.link)
+                            : '/stream?path=' + encodeURIComponent(d.link);
+                        playBrowserAudio(src, d.title);
+                    }
+                });
+            }
+        }
     } else {
         fetch('/control/pause').then(() => {
             isPlaying = !isPlaying; updatePlayBtn(); document.body.classList.toggle('playing', isPlaying);
@@ -445,9 +461,12 @@ function playSong(url, mode = 'play_now', title = '') {
 // ====== STATUS POLL ======
 function pollStatus() {
     fetch('/status').then(r => r.json()).then(d => {
-        setText('tit', d.title || 'Ready');
-        setText('art', d.artist || 'OwrtBox');
-        setText('tech-specs', d.tech_info || 'AWAITING SIGNAL');
+        // In browser mode, don't overwrite metadata with backend defaults (no mpv running)
+        if (systemState.playMode !== 'browser') {
+            setText('tit', d.title || 'Ready');
+            setText('art', d.artist || 'OwrtBox');
+            setText('tech-specs', d.tech_info || 'AWAITING SIGNAL');
+        }
 
         const vs = document.getElementById('vol-slider');
         if(vs && d.volume !== undefined && systemState.playMode !== 'browser') {
