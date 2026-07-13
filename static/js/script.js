@@ -1,8 +1,12 @@
-// OwrtBox Player - COREv5 (SYNC FIXED)
+// OwrtBox Player - COREv6 (Browser Mode + WebAudio + Mini Queue)
 let browserAudio = null, isSeeking = false, currentLyricIndex = -1;
 let lastFrameTime = performance.now(), globalTime = 0, isPlaying = false, totalDuration = 0;
 let activeKnob = null, activeKnobRect = null, volTimer = null, eqTimer = null, balTimeout = null;
 let lyricsData = [], lyricsType = '', lastLyricsTitle = '', isMuted = false;
+
+// WebAudio for browser mode EQ + Balance
+let audioCtx = null, sourceNode = null, gainNode = null, pannerNode = null;
+let eqFilters = [];
 
 let settings;
 try { settings = JSON.parse(localStorage.getItem('owrtmb_set')) || getDefaults(); }
@@ -12,6 +16,68 @@ let systemState = { powerMode: localStorage.getItem('owrtmb_power') || 'portable
 
 function getDefaults() { return { f1:0,f2:0,f3:0,f4:0,f5:0,f6:0,f7:0,f8:0,f9:0,f10:0, vol:50, active_preset:'Normal' }; }
 
+// ====== WEB AUDIO INIT ======
+function initWebAudio() {
+    if (audioCtx) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        gainNode = audioCtx.createGain();
+        pannerNode = audioCtx.createStereoPanner();
+        gainNode.connect(pannerNode);
+        pannerNode.connect(audioCtx.destination);
+        
+        // Create 10-band EQ filters
+        const freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+        eqFilters = [];
+        for (let i = 0; i < 10; i++) {
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'peaking';
+            filter.frequency.value = freqs[i];
+            filter.Q.value = 1.0;
+            filter.gain.value = settings['f' + (i+1)] || 0;
+            eqFilters.push(filter);
+        }
+        // Connect filters in series
+        if (eqFilters.length > 0) {
+            gainNode.disconnect();
+            gainNode.connect(eqFilters[0]);
+            for (let i = 0; i < eqFilters.length - 1; i++) {
+                eqFilters[i].connect(eqFilters[i + 1]);
+            }
+            eqFilters[eqFilters.length - 1].connect(pannerNode);
+        }
+    } catch(e) { console.log("WebAudio not supported"); }
+}
+
+function connectBrowserAudioToWebAudio() {
+    if (!browserAudio || !audioCtx) return;
+    try {
+        if (sourceNode) sourceNode.disconnect();
+        sourceNode = audioCtx.createMediaElementSource(browserAudio);
+        sourceNode.connect(gainNode);
+        // Reconnect chain: source -> gain -> filters -> panner -> destination
+    } catch(e) { /* already connected or not supported */ }
+}
+
+function updateWebAudioEQ() {
+    if (!audioCtx || eqFilters.length === 0) return;
+    for (let i = 0; i < 10; i++) {
+        const val = settings['f' + (i+1)] || 0;
+        eqFilters[i].gain.value = val;
+    }
+}
+
+function updateWebAudioBalance(val) {
+    if (!pannerNode) return;
+    // val from -100 to 100, convert to -1 to 1 for StereoPanner
+    pannerNode.pan.value = val / 100;
+}
+
+function updateWebAudioVolume(v) {
+    if (!gainNode) return;
+    gainNode.gain.value = v / 100;
+}
+
 // ====== INIT ======
 window.onload = () => {
     browserAudio = document.getElementById('browser-audio');
@@ -19,6 +85,12 @@ window.onload = () => {
         browserAudio.addEventListener('timeupdate', onBrowserTime);
         browserAudio.addEventListener('ended', onBrowserEnd);
         browserAudio.addEventListener('loadedmetadata', () => { totalDuration = browserAudio.duration; });
+        browserAudio.addEventListener('play', () => { 
+            if (!audioCtx) initWebAudio();
+            connectBrowserAudioToWebAudio();
+            // Resume AudioContext if suspended (browser autoplay policy)
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        });
     }
 
     updateUI(); setupKnobs(); checkBitPerfect(); checkCrossfeed(); initPath();
@@ -46,7 +118,7 @@ window.onload = () => {
     const bs = document.getElementById('balanceSlider');
     if(bs) bs.addEventListener('input', () => updateBalance(parseInt(bs.value)));
 
-    // Volume SLIDER (single control — knob volume disabled in HTML)
+    // Volume SLIDER
     const vs = document.getElementById('vol-slider');
     if(vs) {
         vs.value = settings.vol || 50;
@@ -55,8 +127,10 @@ window.onload = () => {
             const v = parseInt(vs.value);
             settings.vol = v; localStorage.setItem('owrtmb_set', JSON.stringify(settings));
             document.getElementById('vol-val').textContent = v;
-            if(systemState.playMode === 'browser' && browserAudio) browserAudio.volume = v / 100;
-            else fetch('/control/volume?val=' + v);
+            if(systemState.playMode === 'browser') {
+                if(browserAudio) browserAudio.volume = v / 100;
+                updateWebAudioVolume(v);
+            } else fetch('/control/volume?val=' + v);
         });
     }
 
@@ -84,7 +158,10 @@ function changeVol(delta) {
     settings.vol = v; localStorage.setItem('owrtmb_set', JSON.stringify(settings));
     document.getElementById('vol-slider').value = v;
     document.getElementById('vol-val').textContent = v;
-    fetch('/control/volume?val=' + v);
+    if(systemState.playMode === 'browser') {
+        if(browserAudio) browserAudio.volume = v / 100;
+        updateWebAudioVolume(v);
+    } else fetch('/control/volume?val=' + v);
 }
 
 // ====== MUTE ======
@@ -92,8 +169,11 @@ function toggleMute() {
     isMuted = !isMuted;
     localStorage.setItem('owrtmb_muted', isMuted ? 'true' : 'false');
     updateMuteBtn();
-    fetch('/control/volume?val=' + (isMuted ? 0 : (settings.vol || 50)));
-    if(browserAudio) browserAudio.volume = isMuted ? 0 : (settings.vol || 50) / 100;
+    const vol = isMuted ? 0 : (settings.vol || 50);
+    if(systemState.playMode === 'browser') {
+        if(browserAudio) browserAudio.volume = vol / 100;
+        updateWebAudioVolume(vol);
+    } else fetch('/control/volume?val=' + vol);
 }
 function updateMuteBtn() {
     const btn = document.getElementById('btn-mute');
@@ -105,9 +185,9 @@ function updateMuteBtn() {
 // ====== RADIO ======
 function playRadio(url) {
     if(!url) return; tg('radio');
-    // Always use browser mode for radio streams (via proxy to avoid CORS)
     if(systemState.playMode === 'server') setPlayMode('browser');
     if(browserAudio) {
+        if (!audioCtx) initWebAudio();
         browserAudio.src = '/radio_proxy?url=' + encodeURIComponent(url);
         browserAudio.volume = (settings.vol || 50) / 100;
         browserAudio.play().catch((e) => { showToast('Radio: '+e.message); });
@@ -152,17 +232,26 @@ function nextBrowserTrack() {
 function playBrowserTrack(url, title) {
     if(!browserAudio) return;
     setText('tit', title || 'Unknown'); document.body.classList.add('playing'); isPlaying = true; updatePlayBtn();
-    browserAudio.src = '/stream?path=' + encodeURIComponent(url);
+    if (url.includes('youtube') || url.includes('youtu.be')) {
+        browserAudio.src = '/youtube_proxy?url=' + encodeURIComponent(url);
+    } else {
+        browserAudio.src = '/stream?path=' + encodeURIComponent(url);
+    }
     browserAudio.volume = (settings.vol || 50) / 100;
     browserAudio.play().catch(() => {});
     fetch('/play/current').then(r => r.json()).then(d => { if(d.thumb) document.getElementById('cover-img').src = d.thumb; });
+    updateMiniQueue();
 }
 
 // ====== PLAY ======
 function togglePlay() {
     if(systemState.playMode === 'browser') {
         if(isPlaying) { browserAudio.pause(); isPlaying = false; }
-        else { fetch('/play/current').then(r => r.json()).then(d => { if(d.index >= 0 && d.link) playBrowserTrack(d.link, d.title); }); }
+        else {
+            fetch('/play/current').then(r => r.json()).then(d => {
+                if(d.index >= 0 && d.link) playBrowserTrack(d.link, d.title);
+            });
+        }
         updatePlayBtn(); document.body.classList.toggle('playing', isPlaying);
     } else {
         fetch('/control/pause').then(() => {
@@ -196,7 +285,7 @@ function togglePlayMode() {
     showToast('Mode: ' + (newMode === 'server' ? 'Device (MPV)' : 'Browser'));
 }
 
-// ====== KNOBS (EQ only — volume knob disabled) ======
+// ====== KNOBS ======
 function setupKnobs() {
     document.querySelectorAll('.knob.sm').forEach(k => {
         k.addEventListener('mousedown', startDrag);
@@ -214,7 +303,7 @@ function onDrag(e) {
     const cx = activeKnobRect.left + activeKnobRect.width / 2, cy = activeKnobRect.top + activeKnobRect.height / 2;
     const x = (e.touches ? e.touches[0].clientX : e.clientX) - cx, y = (e.touches ? e.touches[0].clientY : e.clientY) - cy;
     let deg = Math.atan2(y, x) * (180 / Math.PI) + 90; if(deg < 0) deg += 360;
-    if(type === 'vol') return; // Volume knob disabled — use slider
+    if(type === 'vol') return;
     let p = 0; if(deg >= 210) p = (deg - 210) / 300; else if(deg <= 150) p = (150 + deg) / 300; else p = (Math.abs(deg - 210) < Math.abs(deg - 150)) ? 0 : 1;
     let v = Math.round((p * 24) - 12);
     if(settings[type] !== v) { settings[type] = v; updateUI(); sendEq(); }
@@ -224,18 +313,50 @@ function updateUI() {
     document.querySelectorAll('.knob.sm').forEach(el => { const t = el.dataset.type; if(!t || t === 'vol') return; const val = settings[t] || 0; const deg = ((val + 12) / 24) * 270 - 135; el.style.transform = 'rotate(' + deg + 'deg)'; });
     localStorage.setItem('owrtmb_set', JSON.stringify(settings));
 }
-function sendEq() { if(eqTimer) clearTimeout(eqTimer); eqTimer = setTimeout(() => { let q = []; for(let i = 1; i <= 10; i++) q.push('f' + i + '=' + (settings['f' + i] || 0)); fetch('/control/eq?' + q.join('&')); }, 100); }
+function sendEq() {
+    if(eqTimer) clearTimeout(eqTimer);
+    eqTimer = setTimeout(() => {
+        // Apply EQ to WebAudio for browser mode
+        if (systemState.playMode === 'browser') {
+            updateWebAudioEQ();
+        }
+        // Always send to server for mpv mode
+        let q = []; for(let i = 1; i <= 10; i++) q.push('f' + i + '=' + (settings['f' + i] || 0));
+        fetch('/control/eq?' + q.join('&'));
+    }, 100);
+}
 
 // ====== CONTROLS ======
 function ctl(action) {
     if(action === 'pause') togglePlay();
     else if(action === 'prev') {
-        if(systemState.playMode === 'browser') { if(globalTime > 3) { globalTime = 0; if(browserAudio) browserAudio.currentTime = 0; } else fetch('/control/prev'); }
-        else fetch('/control/prev');
-    } else if(action === 'next') { if(systemState.playMode === 'browser') nextBrowserTrack(); else fetch('/control/next'); }
+        if(systemState.playMode === 'browser') { 
+            if(globalTime > 3) { globalTime = 0; if(browserAudio) browserAudio.currentTime = 0; } 
+            else { 
+                // Previous track in browser mode
+                fetch('/play/current').then(r => r.json()).then(d => {
+                    fetch('/queue/list').then(r => r.json()).then(qd => {
+                        if (d.index > 0) {
+                            const prevIdx = d.index - 1;
+                            fetch('/control/jump?index=' + prevIdx).then(() => {
+                                setTimeout(() => {
+                                    fetch('/play/current').then(r => r.json()).then(p => {
+                                        if(p.link) playBrowserTrack(p.link, p.title);
+                                    });
+                                }, 200);
+                            });
+                        }
+                    });
+                });
+            }
+        } else fetch('/control/prev');
+    } else if(action === 'next') { 
+        if(systemState.playMode === 'browser') nextBrowserTrack(); 
+        else fetch('/control/next'); 
+    }
     else if(action === 'shuffle') fetch('/control/shuffle').then(() => showToast('Shuffled'));
     else if(action === 'stop') { if(browserAudio) { browserAudio.pause(); browserAudio.src = ''; } fetch('/control/stop'); }
-    if(['shuffle', 'prev', 'next'].includes(action)) setTimeout(loadQueue, 500);
+    if(['shuffle', 'prev', 'next'].includes(action)) setTimeout(() => { loadQueue(); updateMiniQueue(); }, 500);
 }
 
 // ====== SEARCH ======
@@ -265,18 +386,15 @@ function playSong(url, mode = 'play_now', title = '') {
         if(mode === 'play_now') {
             document.body.classList.add('playing'); showToast('▶ ' + (title || 'Track'));
             if(systemState.playMode === 'browser') {
-                if(url.includes('youtube') || url.includes('youtu.be')) {
-                    // Stream YouTube directly via proxy (no download)
-                    showToast('▶ Streaming YouTube...');
-                    if(browserAudio) {
-                        setText('tit', title || 'YouTube');
-                        browserAudio.src = '/youtube_proxy?url=' + encodeURIComponent(url);
-                        browserAudio.volume = (settings.vol || 50) / 100;
-                        browserAudio.play().catch(() => {}); isPlaying = true; updatePlayBtn();
-                    }
-                } else { setTimeout(() => fetch('/play/current').then(r => r.json()).then(p => { if(p.link) playBrowserTrack(p.link, p.title); }), 300); }
-            } else { isPlaying = true; updatePlayBtn(); }
+                // Browser mode: use HTML5 audio (no mpv involvement)
+                setTimeout(() => fetch('/play/current').then(r => r.json()).then(p => { 
+                    if(p.link) playBrowserTrack(p.link, p.title); 
+                }), 300);
+            } else { 
+                isPlaying = true; updatePlayBtn(); 
+            }
         } else showToast('+ Queue (' + d.queue_len + ')');
+        updateMiniQueue();
     });
 }
 
@@ -329,6 +447,9 @@ function pollStatus() {
         const ci = document.getElementById('cover-img');
         if(ci && d.thumb && ci.src !== d.thumb) ci.src = d.thumb;
         else if(ci && !d.thumb && !ci.src.includes('default.png')) ci.src = '/static/img/default.png';
+        
+        // Update mini queue on every poll
+        updateMiniQueue();
     }).catch(() => {});
 }
 
@@ -373,7 +494,17 @@ function renderLyrics() { const c = document.getElementById('lyrics-container');
 function syncLyrics(t) { if(!document.getElementById('lym').classList.contains('active') || lyricsType !== 'synced') return; let idx = -1; for(let i = lyricsData.length - 1; i >= 0; i--) { if(t >= lyricsData[i].time) { idx = i; break } } if(idx !== currentLyricIndex) { const prev = document.getElementById('line-' + currentLyricIndex); if(prev) prev.classList.remove('active'); currentLyricIndex = idx; const act = document.getElementById('line-' + idx); if(act) { act.classList.add('active'); const cont = document.getElementById('lyrics-container'); cont.scrollTo({ top: act.offsetTop - cont.clientHeight / 2 + act.offsetHeight / 2, behavior: 'smooth' }); } } }
 
 // ====== BALANCE ======
-function updateBalance(val) { let l = 1.0, r = 1.0; if(val < 0) r = 1 - (Math.abs(val) / 100); else if(val > 0) l = 1 - (val / 100); if(balTimeout) clearTimeout(balTimeout); balTimeout = setTimeout(() => fetch('/control/balance?l=' + l.toFixed(2) + '&r=' + r.toFixed(2)), 100); }
+function updateBalance(val) {
+    let l = 1.0, r = 1.0; 
+    if(val < 0) r = 1 - (Math.abs(val) / 100); 
+    else if(val > 0) l = 1 - (val / 100);
+    // Apply balance via WebAudio for browser mode
+    if (systemState.playMode === 'browser') {
+        updateWebAudioBalance(val);
+    }
+    if(balTimeout) clearTimeout(balTimeout); 
+    balTimeout = setTimeout(() => fetch('/control/balance?l=' + l.toFixed(2) + '&r=' + r.toFixed(2)), 100);
+}
 
 // ====== OUTPUT ======
 function manualOut(t) { fetch('/control/output?mode=' + t); showToast('Output: ' + t.toUpperCase()); tg('om'); }
@@ -465,14 +596,18 @@ function updateMiniQueue() {
         if(d.queue.length > 1 && d.current_index >= 0) {
             mq.style.display = 'block'; mql.innerHTML = '';
             const start = d.current_index + 1;
-            for(let i = start; i < Math.min(start + 3, d.queue.length); i++) {
+            const maxShow = systemState.playMode === 'browser' ? 3 : 2;
+            for(let i = start; i < Math.min(start + maxShow, d.queue.length); i++) {
                 const item = d.queue[i]; const div = document.createElement('div');
-                div.style.cssText = 'font-size:0.6rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;';
+                div.style.cssText = 'font-size:0.6rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;padding:1px 0;';
                 div.textContent = (i + 1) + '. ' + item.title;
                 div.onclick = () => { fetch('/control/jump?index=' + i).then(() => showToast('Jump: ' + item.title)); };
                 mql.appendChild(div);
             }
-            if(start + 3 < d.queue.length) { const more = document.createElement('div'); more.style.cssText = 'font-size:0.55rem;color:#555;'; more.textContent = '+' + (d.queue.length - start - 3) + ' more'; mql.appendChild(more); }
+            if(start + maxShow < d.queue.length) { 
+                const more = document.createElement('div'); more.style.cssText = 'font-size:0.55rem;color:#555;'; 
+                more.textContent = '+' + (d.queue.length - start - maxShow) + ' more'; mql.appendChild(more); 
+            }
         } else { mq.style.display = 'none'; }
     }).catch(() => {});
 }
@@ -494,7 +629,7 @@ async function loadQueue() {
         });
     } catch(e) {}
 }
-function clearQueue() { fetch('/queue/clear').then(() => loadQueue()); }
+function clearQueue() { fetch('/queue/clear').then(() => { loadQueue(); updateMiniQueue(); }); }
 
 // ====== PRESETS ======
 function initPresets() {
@@ -504,7 +639,13 @@ function initPresets() {
         const b = document.createElement('button'); b.className = 'preset-btn' + (settings.active_preset === n ? ' active' : ''); b.textContent = n;
         b.onclick = () => {
             settings.active_preset = n;
-            fetch('/control/preset?name=' + n).then(r => r.json()).then(d => { for(let k in d) settings[k] = d[k]; updateUI(); tg('pr-om'); showToast('EQ: ' + n); });
+            fetch('/control/preset?name=' + n).then(r => r.json()).then(d => { 
+                for(let k in d) settings[k] = d[k]; 
+                updateUI(); 
+                // Apply EQ to WebAudio for browser mode
+                if (systemState.playMode === 'browser') updateWebAudioEQ();
+                tg('pr-om'); showToast('EQ: ' + n); 
+            });
         };
         c.appendChild(b);
     });

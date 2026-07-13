@@ -650,8 +650,23 @@ def play_current():
 
 @app.route('/play/next_browser')
 def next_browser():
-    play_next_in_queue()
-    return play_current()
+    # Browser mode: advance queue index without calling trigger_play (mpv)
+    with state_lock:
+        if not app_state["queue"]:
+            return jsonify({"index": -1})
+        next_idx = app_state["current_index"] + 1
+        if next_idx < len(app_state["queue"]):
+            app_state["current_index"] = next_idx
+            next_song = app_state["queue"][next_idx]
+            return jsonify({
+                "index": next_idx,
+                "title": next_song['title'],
+                "link": next_song['link'],
+                "thumb": app_state.get("thumb", "")
+            })
+        else:
+            app_state["status"] = "stopped"
+            return jsonify({"index": -1})
 
 @app.route('/control/<action>')
 def control(action):
