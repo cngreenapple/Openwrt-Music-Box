@@ -199,6 +199,12 @@ function onBrowserEnd() { if(playMode === 'browser') nextBrowserTrack(); }
 
 function playBrowserAudio(src, title) {
     if(!browserAudio) return;
+    // Reset lyrics data for new track
+    lyricsData = [];
+    lyricsType = '';
+    currentLyricIndex = -1;
+    lastLyricsTitle = title || '';
+
     browserAudio.src = src;
     browserAudio.volume = (settings.vol || 50) / 100;
     let displayTitle = title || 'Unknown';
@@ -211,6 +217,7 @@ function playBrowserAudio(src, title) {
     setText('tit', displayTitle);
     setText('art', displayArtist);
     setText('tech-specs', 'STREAMING');
+    lastLyricsTitle = displayTitle; // Store final display title for sync guard
     document.body.classList.add('playing');
     isPlaying = true;
     updatePlayBtn();
@@ -481,6 +488,10 @@ function pollStatus() {
     }
     // Server mode: poll from device backend
     fetch(api('/status')).then(r => r.json()).then(d => {
+        // Update lyrics tracking on track change in server mode
+        if (d.title && d.title !== 'Ready' && d.title !== lastLyricsTitle) {
+            lastLyricsTitle = d.title;
+        }
         setText('tit', d.title || 'Ready');
         setText('art', d.artist || 'OwrtBox');
         setText('tech-specs', d.tech_info || 'AWAITING SIGNAL');
