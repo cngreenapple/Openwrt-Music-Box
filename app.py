@@ -506,40 +506,12 @@ def get_lyrics():
 @app.route('/bt/scan')
 def bt_scan():
     try:
-        # Power on adapter first
-        subprocess.run("bluetoothctl power on", shell=True, capture_output=True)
-        subprocess.run("bluetoothctl agent on", shell=True, capture_output=True)
-        subprocess.run("bluetoothctl default-agent", shell=True, capture_output=True)
-        
-        # Clear any existing scan
-        subprocess.run("bluetoothctl scan off", shell=True, capture_output=True)
-        
-        # Start scan in background
-        scan_proc = subprocess.Popen(["bluetoothctl", "scan", "on"], 
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Wait for scan to discover devices
-        time.sleep(8)
-        scan_proc.terminate()
-        try: scan_proc.wait(timeout=2)
-        except: scan_proc.kill()
-        
-        # Get discovered devices
-        out = subprocess.check_output("bluetoothctl devices", shell=True, timeout=5).decode()
-        devices = []
-        for line in out.split('\n'):
-            m = re.search(r"Device\s+([0-9A-F:]{17})\s+(.+)", line)
-            if m:
-                mac = m.group(1)
-                name = m.group(2).strip()
-                # Filter out self-mac or controller entries
-                if name.replace("-", ":") != mac:
-                    devices.append({'mac': mac, 'name': name})
-        
-        app.logger.info(f"BT scan found {len(devices)} devices")
+        from bt_manager import BluetoothManager
+        btm = BluetoothManager()
+        devices = btm.scan_devices()
         return jsonify(devices)
     except Exception as e:
-        app.logger.error(f"bt_scan failed: {e}")
+        app.logger.error(f"bt_scan error: {e}")
         return jsonify([])
 
 @app.route('/bt/connect')
