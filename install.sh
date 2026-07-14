@@ -13,6 +13,22 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Auto-update from GitHub (safe to run repeatedly)
+if command -v git &>/dev/null && [ -d "$SCRIPT_DIR/.git" ]; then
+    log_info "Checking for updates from GitHub..."
+    git fetch origin 2>/dev/null
+    BEHIND=$(git rev-list HEAD..origin/main --count 2>/dev/null)
+    if [ "$BEHIND" -gt 0 ]; then
+        log_warn "Found $BEHIND new commit(s). Updating..."
+        git pull origin main 2>&1
+        log_ok "Updated! Restarting installer with new code..."
+        exec "$0" "$@"
+    else
+        log_ok "Already up to date."
+    fi
+fi
+
 VENV_DIR="$SCRIPT_DIR/venv"
 REQUIREMENTS="$SCRIPT_DIR/requirements.txt"
 ALL_OK=true
