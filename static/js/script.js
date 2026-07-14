@@ -70,6 +70,8 @@ window.onload = () => {
         browserAudio.addEventListener('ended', onBrowserEnd);
         browserAudio.addEventListener('loadedmetadata', () => { totalDuration = browserAudio.duration; });
         browserAudio.addEventListener('error', function() {
+            // Ignore empty source errors from stop() 
+            if (this.error && this.error.message && this.error.message.includes('empty')) return;
             showToast('Audio error: ' + (this.error ? this.error.message : 'unknown'));
         });
         browserAudio.addEventListener('play', () => {
@@ -476,7 +478,7 @@ function ctl(action) {
             }
         }
     }
-    else if(action === 'stop') { if(browserAudio) { browserAudio.pause(); browserAudio.src = ''; } if(playMode !== 'browser') fetch(api('/control/stop')); }
+    else if(action === 'stop') { if(browserAudio) { browserAudio.pause(); browserAudio.removeAttribute('src'); browserAudio.load(); } if(playMode !== 'browser') fetch(api('/control/stop')); }
     if(['shuffle', 'prev', 'next'].includes(action)) setTimeout(() => { loadQueue(); updateMiniQueue(); }, 500);
 }
 
