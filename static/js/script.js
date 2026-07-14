@@ -131,22 +131,29 @@ function restorePlaybackState() {
             if (d.total_time) totalDuration = d.total_time;
             setText('t-tot', fmtTime(totalDuration || 0));
             if (d.current_time !== undefined) globalTime = d.current_time;
-            // Update output indicator
+            // Update output indicator (server mode only)
             const oi = document.getElementById('output-text');
             if (oi && d.status_output) {
                 const outputMap = {'jack': '🔊 Line Out (Jack)', 'hdmi': '📺 HDMI Audio', 'bluetooth': '🎧 Bluetooth'};
                 oi.textContent = outputMap[d.status_output] || d.status_output;
             }
-            if (d.status === 'playing') {
+            // Show cover art if available
+            if (d.thumb) {
                 const ci = document.getElementById('cover-img');
-                if (ci && d.thumb && ci.src !== d.thumb) ci.src = d.thumb;
+                if (ci) ci.src = d.thumb;
+            }
+            // Show playing state visually but do NOT set isPlaying = true
+            // (pollStatus will handle state transitions naturally)
+            if (d.status === 'playing') {
                 document.body.classList.add('playing');
                 document.getElementById('cover-img').classList.add('spin');
-                isPlaying = true;
-                updatePlayBtn();
             }
-            // Restore queue list
             updateMiniQueue();
+            // Update progress bar position from server time
+            if (d.total_time > 0 && d.current_time !== undefined) {
+                const pb = document.getElementById('pb');
+                if (pb) pb.value = (d.current_time / d.total_time) * 100;
+            }
         }
     }).catch(() => {});
 };
