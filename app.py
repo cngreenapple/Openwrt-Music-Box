@@ -506,19 +506,41 @@ def get_lyrics():
 @app.route('/bt/scan')
 def bt_scan():
     try:
-        subprocess.run("bluetoothctl scan off", shell=True)
-        subprocess.run("bluetoothctl power on", shell=True)
-        subprocess.run("timeout 10s bluetoothctl scan on", shell=True)
+        # Power on adapter first
+        subprocess.run("bluetoothctl power on", shell=True, capture_output=True)
+        subprocess.run("bluetoothctl agent on", shell=True, capture_output=True)
+        subprocess.run("bluetoothctl default-agent", shell=True, capture_output=True)
         
-        out = subprocess.check_output("bluetoothctl devices", shell=True).decode()
+        # Clear any existing scan
+        subprocess.run("bluetoothctl scan off", shell=True, capture_output=True)
+        
+        # Start scan in background
+        scan_proc = subprocess.Popen(["bluetoothctl", "scan", "on"], 
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Wait for scan to discover devices
+        time.sleep(8)
+        scan_proc.terminate()
+        try: scan_proc.wait(timeout=2)
+        except: scan_proc.kill()
+        
+        # Get discovered devices
+        out = subprocess.check_output("bluetoothctl devices", shell=True, timeout=5).decode()
         devices = []
-        matches = re.findall(r"Device\s+([0-9A-F:]{17})\s+(.+)", out)
-        for mac, name in matches:
-            clean_name = name.strip()
-            if clean_name.replace("-", ":") != mac: 
-                devices.append({'mac': mac, 'name': clean_name})
+        for line in out.split('\n'):
+            m = re.search(r"Device\s+([0-9A-F:]{17})\s+(.+)", line)
+            if m:
+                mac = m.group(1)
+                name = m.group(2).strip()
+                # Filter out self-mac or controller entries
+                if name.replace("-", ":") != mac:
+                    devices.append({'mac': mac, 'name': name})
+        
+        app.logger.info(f"BT scan found {len(devices)} devices")
         return jsonify(devices)
-    except: return jsonify([])
+    except Exception as e:
+        app.logger.error(f"bt_scan failed: {e}")
+        return jsonify([])
 
 @app.route('/bt/connect')
 def bt_connect():
