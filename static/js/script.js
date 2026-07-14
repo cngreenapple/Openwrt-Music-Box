@@ -294,63 +294,42 @@ function togglePlayMode() {
     const newMode = playMode === 'server' ? 'browser' : 'server';
     const oldMode = playMode;
     
-    // Save current playback state before switching
-    const currentTime = globalTime;
-    
     fetch('/play/current').then(r => r.json()).then(cur => {
         if (cur.index >= 0 && cur.link) {
-            // There's an active track - continue playback in new mode
-            if (oldMode === 'server' && newMode === 'browser') {
-                // Server → Browser: pause mpv, then play via browser audio
-                switchPlayMode('browser');
-                setTimeout(() => {
+            // Stop current mode first
+            if (oldMode === 'browser') {
+                // Pause browser audio
+                if (browserAudio) { browserAudio.pause(); browserAudio.removeAttribute('src'); browserAudio.load(); }
+            } else {
+                // Stop mpv
+                fetch('/control/stop');
+            }
+            
+            // Switch mode
+            switchPlayMode(newMode);
+            
+            // Play same song from start in new mode
+            setTimeout(() => {
+                if (newMode === 'browser') {
+                    // Play via browser audio from start
                     const src = cur.link.includes('youtube') || cur.link.includes('youtu.be')
                         ? '/youtube_proxy?url=' + encodeURIComponent(cur.link)
                         : '/stream?path=' + encodeURIComponent(cur.link);
-                    browserAudio.src = src;
-                    browserAudio.volume = (settings.vol || 50) / 100;
-                    // Set title/artist
-                    let displayTitle = cur.title || 'Unknown';
-                    let displayArtist = 'Playing';
-                    if (displayTitle.includes(' - ')) {
-                        const parts = displayTitle.split(' - ');
-                        displayArtist = parts[0].trim();
-                        displayTitle = parts[1].trim();
-                    }
-                    setText('tit', displayTitle);
-                    setText('art', displayArtist);
-                    setText('tech-specs', 'STREAMING');
-                    document.body.classList.add('playing');
-                    isPlaying = true;
-                    updatePlayBtn();
-                    const promise = browserAudio.play();
-                    if (promise) promise.catch((e) => {
-                        if (e.name === 'NotAllowedError') {
-                            showToast('Tap to play');
-                            document.addEventListener('click', () => { browserAudio.play().catch(() => {}); }, { once: true });
-                        }
-                    });
-                }, 300);
-            } else if (oldMode === 'browser' && newMode === 'server') {
-                // Browser → Server: play via mpv
-                switchPlayMode('server');
-                setTimeout(() => {
+                    playBrowserAudio(src, cur.title);
+                } else {
+                    // Play via mpv from start
                     fetch('/play?url=' + encodeURIComponent(cur.link) + '&mode=play_now&title=' + encodeURIComponent(cur.title));
-                    showToast('Continuing on Device...');
-                }, 200);
-            } else {
-                switchPlayMode(newMode);
-            }
+                }
+            }, 300);
         } else {
-            // No active track, just switch
+            // No active track, just switch mode
             switchPlayMode(newMode);
         }
     }).catch(() => {
-        // Fallback: just switch mode
         switchPlayMode(newMode);
     });
     
-    showToast('Mode: ' + (newMode === 'server' ? 'Device (MPV)' : 'Browser'));
+    showToast(newMode === 'server' ? '📱 Mode: Device' : '🌐 Mode: Browser');
 }
 
 // ====== KNOBS ======
