@@ -460,10 +460,11 @@ def get_lyrics():
             
             if resp.status_code == 200:
                 data = resp.json()
-                if data.get('syncedLyrics'): 
-                    return jsonify({"type": "synced", "lyrics": data['syncedLyrics']})
-                elif data.get('plainLyrics'): 
+                # Prioritize plain lyrics (no sync needed)
+                if data.get('plainLyrics'): 
                     return jsonify({"type": "plain", "lyrics": data['plainLyrics']})
+                elif data.get('syncedLyrics'): 
+                    return jsonify({"type": "plain", "lyrics": data['syncedLyrics']})
         
         # Strategy 2: /api/search with track_name + artist_name (no duration needed)
         if artist and artist != "Unknown Artist":

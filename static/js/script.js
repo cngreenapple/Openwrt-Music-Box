@@ -2,7 +2,7 @@
 let browserAudio = null, isSeeking = false, currentLyricIndex = -1;
 let lastFrameTime = performance.now(), globalTime = 0, isPlaying = false, totalDuration = 0;
 let activeKnob = null, activeKnobRect = null, volTimer = null, eqTimer = null, balTimeout = null;
-let lyricsData = [], lyricsType = '', lastLyricsTitle = '', isMuted = false;
+let lyricsData = [], lyricsType = '', lastLyricsTitle = '', isMuted = false, shuffleMode = false;
 let audioInitialized = false;
 
 // WebAudio (initialized ONCE)
@@ -419,43 +419,61 @@ function ctl(action) {
         } else fetch(api('/control/prev'));
     }
     else if(action === 'next') {
-        if(playMode === 'browser') nextBrowserTrack();
-        else fetch(api('/control/next'));
+        if(playMode === 'browser') {
+            if (shuffleMode) {
+                // Shuffle mode: pick random track
+                fetch(api('/queue/list')).then(r => r.json()).then(d => {
+                    if (d.queue.length > 0) {
+                        const others = d.queue.filter((_, i) => i !== d.current_index);
+                        if (others.length > 0) {
+                            const pick = others[Math.floor(Math.random() * others.length)];
+                            fetch(api('/browser_play?url=' + encodeURIComponent(pick.link) + '&mode=play_now&title=' + encodeURIComponent(pick.title)));
+                            setTimeout(() => {
+                                const src = pick.link.includes('youtube') || pick.link.includes('youtu.be')
+                                    ? api('/youtube_proxy?url=' + encodeURIComponent(pick.link))
+                                    : api('/stream?path=' + encodeURIComponent(pick.link));
+                                playBrowserAudio(src, pick.title);
+                                setTimeout(() => { loadQueue(); updateMiniQueue(); }, 300);
+                            }, 300);
+                        }
+                    }
+                });
+            } else {
+                nextBrowserTrack();
+            }
+        } else {
+            if (shuffleMode) {
+                // Shuffle mode on server: pick random track
+                fetch(api('/queue/list')).then(r => r.json()).then(d => {
+                    if (d.queue.length > 1) {
+                        const others = d.queue.filter((_, i) => i !== d.current_index);
+                        if (others.length > 0) {
+                            const pick = others[Math.floor(Math.random() * others.length)];
+                            fetch(api('/control/jump?index=' + d.queue.indexOf(pick))).then(() => showToast('Random track'));
+                        }
+                    } else {
+                        fetch(api('/control/next'));
+                    }
+                });
+            } else {
+                fetch(api('/control/next'));
+            }
+        }
     }
     else if(action === 'shuffle') {
+        // Toggle shuffle mode
+        shuffleMode = !shuffleMode;
+        const btn = document.getElementById('btn-shuffle') || document.querySelector('[onclick*="shuffle"]');
+        if (btn) btn.classList.toggle('active', shuffleMode);
+        
         if (playMode === 'browser') {
-            // Browser mode: shuffle queue locally
-            fetch(api('/queue/list')).then(r => r.json()).then(d => {
-                if (d.queue.length > 1 && d.current_index >= 0) {
-                    const current = d.queue[d.current_index];
-                    const rest = d.queue.filter((_, i) => i !== d.current_index);
-                    // Fisher-Yates shuffle on rest
-                    for (let i = rest.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [rest[i], rest[j]] = [rest[j], rest[i]];
-                    }
-                    const newQueue = [current, ...rest];
-                    // Update backend: rebuild queue via single endpoint sequence
-                    fetch(api('/queue/clear')).then(() => {
-                        let allParams = [];
-                        newQueue.forEach((item, idx) => {
-                            const mode = idx === 0 ? 'play_now' : 'enqueue'; // first item is current track
-                            allParams.push('/browser_play?url=' + encodeURIComponent(item.link) + '&mode=' + mode + '&title=' + encodeURIComponent(item.title));
-                        });
-                        // Execute all sequentially via chain
-                        let p = Promise.resolve();
-                        allParams.forEach(param => {
-                            p = p.then(() => fetch(api(param)));
-                        });
-                        p.then(() => {
-                            showToast('Shuffled');
-                            setTimeout(() => { loadQueue(); updateMiniQueue(); }, 300);
-                        });
-                    });
-                }
-            });
+            showToast(shuffleMode ? '🔀 Shuffle ON' : '🔀 Shuffle OFF');
         } else {
-            fetch(api('/control/shuffle')).then(() => showToast('Shuffled'));
+            if (shuffleMode) {
+                fetch(api('/control/shuffle')).then(() => showToast('🔀 Shuffle ON'));
+            } else {
+                showToast('🔀 Shuffle OFF');
+            }
         }
     }
     else if(action === 'stop') { if(browserAudio) { browserAudio.pause(); browserAudio.src = ''; } if(playMode !== 'browser') fetch(api('/control/stop')); }
@@ -606,17 +624,17 @@ function fetchLyrics() {
             }
 
             lyricsType = d.type;
+            // Always render plain lyrics (strip timestamps if synced)
+            let plainText = d.lyrics;
             if (d.type === 'synced') {
-                parseLRC(d.lyrics);
-                renderLyrics();
-                syncLyrics(globalTime);
-            } else {
-                cont.innerHTML = '';
-                const safeDiv = document.createElement('div');
-                safeDiv.style.cssText = "white-space: pre-wrap; line-height: 1.8; color:#eee; font-size:1.1rem; padding: 20px 10px 100px;";
-                safeDiv.innerText = d.lyrics;
-                cont.appendChild(safeDiv);
+                // Remove LRC timestamps like [00:12.34]
+                plainText = d.lyrics.replace(/\[\d{2}:\d{2}\.\d{2}\]/g, '').trim();
             }
+            cont.innerHTML = '';
+            const safeDiv = document.createElement('div');
+            safeDiv.style.cssText = "white-space: pre-wrap; line-height: 1.8; color:#eee; font-size:1.1rem; padding: 20px 10px 100px;";
+            safeDiv.innerText = plainText;
+            cont.appendChild(safeDiv);
         })
         .catch(() => {
             cont.innerHTML = '<div style="margin-top:50px; color:red;">Connection Error</div>';
