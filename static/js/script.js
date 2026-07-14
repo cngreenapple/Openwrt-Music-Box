@@ -424,7 +424,7 @@ function ctl(action) {
     }
     else if(action === 'shuffle') {
         if (playMode === 'browser') {
-            // Browser mode: shuffle queue locally, update backend
+            // Browser mode: shuffle queue locally
             fetch(api('/queue/list')).then(r => r.json()).then(d => {
                 if (d.queue.length > 1 && d.current_index >= 0) {
                     const current = d.queue[d.current_index];
@@ -435,17 +435,19 @@ function ctl(action) {
                         [rest[i], rest[j]] = [rest[j], rest[i]];
                     }
                     const newQueue = [current, ...rest];
-                    // Update backend: clear and re-add
+                    // Update backend: rebuild queue via single endpoint sequence
                     fetch(api('/queue/clear')).then(() => {
-                        let chain = Promise.resolve();
-                        newQueue.forEach(item => {
-                            chain = chain.then(() => 
-                                fetch(api('/browser_play?url=' + encodeURIComponent(item.link) + '&mode=enqueue&title=' + encodeURIComponent(item.title)))
-                            );
+                        let allParams = [];
+                        newQueue.forEach((item, idx) => {
+                            const mode = idx === 0 ? 'play_now' : 'enqueue'; // first item is current track
+                            allParams.push('/browser_play?url=' + encodeURIComponent(item.link) + '&mode=' + mode + '&title=' + encodeURIComponent(item.title));
                         });
-                        chain.then(() => {
-                            // Update current_index = 0 since current track is first
-                            fetch(api('/browser_play?url=' + encodeURIComponent(current.link) + '&mode=play_now&title=' + encodeURIComponent(current.title)));
+                        // Execute all sequentially via chain
+                        let p = Promise.resolve();
+                        allParams.forEach(param => {
+                            p = p.then(() => fetch(api(param)));
+                        });
+                        p.then(() => {
                             showToast('Shuffled');
                             setTimeout(() => { loadQueue(); updateMiniQueue(); }, 300);
                         });
@@ -587,7 +589,8 @@ function fetchLyrics() {
         return;
     }
 
-    fetch('/get_lyrics?duration=' + Math.round(totalDuration || 0))
+    const artist = document.getElementById('art').innerText;
+    fetch('/get_lyrics?title=' + encodeURIComponent(title) + '&artist=' + encodeURIComponent(artist))
         .then(r => r.json())
         .then(d => {
             lastLyricsTitle = title;
