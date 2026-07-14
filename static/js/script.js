@@ -539,6 +539,12 @@ function pollStatus() {
             const el = document.getElementById(id);
             if(el) { el.textContent = d[id] || ''; el.style.display = d[id] ? 'inline-flex' : 'none'; }
         });
+        // Update output indicator from server status
+        const oi = document.getElementById('output-text');
+        if (oi && d.status_output) {
+            const outputMap = {'jack': '🔊 Line Out (Jack)', 'hdmi': '📺 HDMI Audio', 'bluetooth': '🎧 Bluetooth'};
+            oi.textContent = outputMap[d.status_output] || d.status_output;
+        }
         if(d.status === 'playing' && !isPlaying) { isPlaying = true; updatePlayBtn(); document.body.classList.add('playing'); document.getElementById('cover-img').classList.add('spin'); }
         else if(d.status !== 'playing' && isPlaying) { isPlaying = false; updatePlayBtn(); document.body.classList.remove('playing'); document.getElementById('cover-img').classList.remove('spin'); }
         const ci = document.getElementById('cover-img');
