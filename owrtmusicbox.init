@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+# ============================================
+# Owrt-MusicBox Init Script for OpenWrt
+# Auto-start at boot, run in background
+# ============================================
+
+START=99
+STOP=10
+
+USE_PROCD=1
+
+SCRIPT_DIR="/root/owrt-musicbox"
+VENV_DIR="$SCRIPT_DIR/venv"
+APP_FILE="$SCRIPT_DIR/app.py"
+PID_FILE="/var/run/owrtmusicbox.pid"
+
+start_service() {
+    # Kill any existing instance
+    service_stop
+    
+    # Wait for network
+    sleep 3
+    
+    cd "$SCRIPT_DIR" || exit 1
+    
+    # Setup Python path
+    if [ -f "$VENV_DIR/bin/activate" ]; then
+        . "$VENV_DIR/bin/activate"
+    fi
+    
+    # Start with procd for auto-restart
+    procd_open_instance
+    procd_set_param command python3 "$APP_FILE"
+    procd_set_param respawn 3600 5 0
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param pidfile "$PID_FILE"
+    procd_close_instance
+    
+    echo "Owrt-MusicBox started on port 2030"
+}
+
+stop_service() {
+    # Kill python3 running app.py
+    PID=$(pgrep -f "python3.*app.py" 2>/dev/null)
+    if [ -n "$PID" ]; then
+        kill -15 "$PID" 2>/dev/null
+        sleep 1
+        kill -9 "$PID" 2>/dev/null
+    fi
+    rm -f "$PID_FILE"
+}
+
+service_running() {
+    pgrep -f "python3.*app.py" > /dev/null 2>&1
+}
+
+restart() {
+    stop_service
+    sleep 1
+    start_service
+}

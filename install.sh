@@ -226,9 +226,9 @@ else
 fi
 
 # ============================================
-# STEP 7: AUTO-START
+# STEP 7: AUTO-START (Background Service)
 # ============================================
-echo ""; echo -e "${YELLOW}---[7/7] Auto-Start ---${NC}"
+echo ""; echo -e "${YELLOW}---[7/7] Auto-Start (Background Service) ---${NC}"
 
 SERVICE_STARTED=false
 
@@ -254,10 +254,25 @@ DOCKERDNS
     else
         log_warn "Build gagal. Manual: cd $SCRIPT_DIR && OWRTMB_PORT=$OWRTMB_PORT docker-compose up -d --build"
     fi
+elif [ "$IS_OPENWRT" = true ] && [ -f /sbin/procd ]; then
+    # Register OpenWrt init script (procd-based background service)
+    cp "$SCRIPT_DIR/owrtmusicbox.init" /etc/init.d/owrtmusicbox
+    chmod +x /etc/init.d/owrtmusicbox
+    /etc/init.d/owrtmusicbox enable
+    log_info "Starting Owrt-MusicBox as background service..."
+    /etc/init.d/owrtmusicbox start
+    sleep 3
+    if /etc/init.d/owrtmusicbox running; then
+        log_ok "Service registered & RUNNING (auto-start on boot)"
+        SERVICE_STARTED=true
+    else
+        log_warn "Service registered but not responding yet"
+    fi
 else
     log_info "Starting service..."; cd "$SCRIPT_DIR"
     nohup ./run.sh > /tmp/owrt-musicbox.log 2>&1 &
     sleep 2; SERVICE_STARTED=true; log_ok "Service started (PID: $!)"
+    log_warn "Not a persistent service. Use install.sh on OpenWrt for auto-start."
 fi
 
 # ============================================
