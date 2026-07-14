@@ -294,35 +294,53 @@ function togglePlayMode() {
     const newMode = playMode === 'server' ? 'browser' : 'server';
     const oldMode = playMode;
     
-    fetch('/play/current').then(r => r.json()).then(cur => {
-        if (cur.index >= 0 && cur.link) {
-            // Stop current mode first
-            if (oldMode === 'browser') {
-                // Pause browser audio
-                if (browserAudio) { browserAudio.pause(); browserAudio.removeAttribute('src'); browserAudio.load(); }
-            } else {
-                // Stop mpv
-                fetch('/control/stop');
-            }
-            
-            // Switch mode
-            switchPlayMode(newMode);
-            
-            // Play same song from start in new mode
+    // Save queue + current track before switching
+    Promise.all([
+        fetch('/queue/list').then(r => r.json()),
+        fetch('/play/current').then(r => r.json())
+    ]).then(([queueData, cur]) => {
+        const savedQueue = queueData.queue || [];
+        const savedIndex = queueData.current_index !== undefined ? queueData.current_index : -1;
+        
+        // Stop current mode
+        if (oldMode === 'browser') {
+            if (browserAudio) { browserAudio.pause(); browserAudio.removeAttribute('src'); browserAudio.load(); }
+        }
+        
+        // Switch mode
+        switchPlayMode(newMode);
+        
+        // Restore queue in new mode
+        if (savedQueue.length > 0 && savedIndex >= 0) {
             setTimeout(() => {
-                if (newMode === 'browser') {
-                    // Play via browser audio from start
-                    const src = cur.link.includes('youtube') || cur.link.includes('youtu.be')
-                        ? '/youtube_proxy?url=' + encodeURIComponent(cur.link)
-                        : '/stream?path=' + encodeURIComponent(cur.link);
-                    playBrowserAudio(src, cur.title);
-                } else {
-                    // Play via mpv from start
-                    fetch('/play?url=' + encodeURIComponent(cur.link) + '&mode=play_now&title=' + encodeURIComponent(cur.title));
-                }
+                // Step 1: Clear and rebuild queue via browser_play (works in both modes)
+                fetch('/queue/clear').then(() => {
+                    let chain = Promise.resolve();
+                    savedQueue.forEach((item, idx) => {
+                        const m = (idx === savedIndex) ? 'play_now' : 'enqueue';
+                        chain = chain.then(() => 
+                            fetch('/browser_play?url=' + encodeURIComponent(item.link) + '&mode=' + m + '&title=' + encodeURIComponent(item.title))
+                        );
+                    });
+                    // Step 2: Start playback in the new mode
+                    chain.then(() => {
+                        if (cur.index >= 0 && cur.link) {
+                            if (newMode === 'browser') {
+                                const src = cur.link.includes('youtube') || cur.link.includes('youtu.be')
+                                    ? '/youtube_proxy?url=' + encodeURIComponent(cur.link)
+                                    : '/stream?path=' + encodeURIComponent(cur.link);
+                                playBrowserAudio(src, cur.title);
+                            } else {
+                                // Use jump to start mpv (does NOT rebuild queue)
+                                fetch('/control/jump?index=' + savedIndex);
+                            }
+                        }
+                        setTimeout(() => { loadQueue(); updateMiniQueue(); }, 300);
+                    });
+                });
             }, 300);
         } else {
-            // No active track, just switch mode
+            // No queue, just switch
             switchPlayMode(newMode);
         }
     }).catch(() => {
