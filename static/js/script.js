@@ -115,8 +115,40 @@ window.onload = () => {
             } else fetch(api('/control/volume?val=' + v));
         });
     }
+    // Restore UI state after refresh: always fetch from backend first
+    restorePlaybackState();
     startLoop();
     setInterval(pollStatus, 1000);
+};
+
+/** Restore playback info from server on page refresh */
+function restorePlaybackState() {
+    fetch(api('/status')).then(r => r.json()).then(d => {
+        if (d.title && d.title !== 'Ready') {
+            setText('tit', d.title);
+            setText('art', d.artist || 'OwrtBox');
+            setText('tech-specs', d.tech_info || '');
+            if (d.total_time) totalDuration = d.total_time;
+            setText('t-tot', fmtTime(totalDuration || 0));
+            if (d.current_time !== undefined) globalTime = d.current_time;
+            // Update output indicator
+            const oi = document.getElementById('output-text');
+            if (oi && d.status_output) {
+                const outputMap = {'jack': '🔊 Line Out (Jack)', 'hdmi': '📺 HDMI Audio', 'bluetooth': '🎧 Bluetooth'};
+                oi.textContent = outputMap[d.status_output] || d.status_output;
+            }
+            if (d.status === 'playing') {
+                const ci = document.getElementById('cover-img');
+                if (ci && d.thumb && ci.src !== d.thumb) ci.src = d.thumb;
+                document.body.classList.add('playing');
+                document.getElementById('cover-img').classList.add('spin');
+                isPlaying = true;
+                updatePlayBtn();
+            }
+            // Restore queue list
+            updateMiniQueue();
+        }
+    }).catch(() => {});
 };
 
 // ====== KEYBOARD ======
